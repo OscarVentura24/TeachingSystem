@@ -52,6 +52,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/teachers', [\App\Http\Controllers\TeacherController::class, 'store'])->name('teachers.store');
     Route::put('/teachers/{teacher}', [\App\Http\Controllers\TeacherController::class, 'update'])->name('teachers.update');
     Route::delete('/teachers/{teacher}', [\App\Http\Controllers\TeacherController::class, 'destroy'])->name('teachers.destroy');
+
+    // Institutions Management & Tenant Switcher
+    Route::get('/institutions', [\App\Http\Controllers\InstitutionController::class, 'index'])->name('institutions.index');
+    Route::post('/institutions', [\App\Http\Controllers\InstitutionController::class, 'store'])->name('institutions.store');
+    Route::put('/institutions/{institution}', [\App\Http\Controllers\InstitutionController::class, 'update'])->name('institutions.update');
+    Route::delete('/institutions/{institution}', [\App\Http\Controllers\InstitutionController::class, 'destroy'])->name('institutions.destroy');
+    Route::post('/institutions/switch', [\App\Http\Controllers\InstitutionController::class, 'switch'])->name('institutions.switch');
 });
 
 

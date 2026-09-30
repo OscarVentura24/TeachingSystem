@@ -14,6 +14,7 @@ import {
     XCircle,
     UserCheck,
     UserX,
+    Building2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -64,15 +65,16 @@ interface Props {
     institutions: InstitutionItem[];
     courses: CourseItem[];
     isCurrentUserAdmin: boolean;
+    activeInstitution?: { id: number; name: string } | null;
 }
 
-export default function TeachersIndex({ teachers, institutions, courses }: Props) {
+export default function TeachersIndex({ teachers, institutions, courses, activeInstitution }: Props) {
     const [openCreateDialog, setOpenCreateDialog] = useState(false);
     const [editingTeacher, setEditingTeacher] = useState<TeacherItem | null>(null);
     const [search, setSearch] = useState('');
     const [roleFilter, setRoleFilter] = useState<'all' | 'teacher' | 'admin'>('all');
 
-    const defaultInstId = institutions.length > 0 ? institutions[0].id : '';
+    const defaultInstId = activeInstitution?.id || (institutions.length > 0 ? institutions[0].id : '');
 
     const createForm = useForm({
         name: '',
@@ -177,10 +179,17 @@ export default function TeachersIndex({ teachers, institutions, courses }: Props
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2.5">
                             <Users className="h-6 w-6 text-primary" />
-                            Gestión de Docentes y Permisos
+                            Docentes
+                            {activeInstitution && (
+                                <span className="text-base font-normal text-muted-foreground">
+                                    • {activeInstitution.name}
+                                </span>
+                            )}
                         </h1>
                         <p className="text-sm text-muted-foreground mt-1">
-                            Crea profesores, asigna roles institucionales y vincula qué cursos puede impartir y evaluar cada uno.
+                            {activeInstitution
+                                ? `Profesores y equipo docente de ${activeInstitution.name}.`
+                                : 'Crea profesores, asigna roles institucionales y vincula qué cursos puede impartir y evaluar cada uno.'}
                         </p>
                     </div>
 
@@ -242,22 +251,32 @@ export default function TeachersIndex({ teachers, institutions, courses }: Props
                                     </p>
                                 </div>
 
-                                <div className="space-y-1.5">
-                                    <Label>Institución *</Label>
-                                    <SearchableSelect
-                                        options={institutions.map((inst) => ({
-                                            value: inst.id,
-                                            label: inst.name,
-                                        }))}
-                                        value={createForm.data.institution_id}
-                                        onChange={(val) => createForm.setData('institution_id', val)}
-                                        placeholder="Seleccionar institución..."
-                                        searchPlaceholder="Buscar institución..."
-                                    />
-                                    {createForm.errors.institution_id && (
-                                        <p className="text-xs text-destructive">{createForm.errors.institution_id}</p>
-                                    )}
-                                </div>
+                                {activeInstitution ? (
+                                    <div className="bg-primary/5 border border-primary/20 rounded-md p-2.5 flex items-center justify-between text-xs">
+                                        <div className="flex items-center gap-2">
+                                            <Building2 className="h-4 w-4 text-primary" />
+                                            <span className="font-medium text-foreground">{activeInstitution.name}</span>
+                                        </div>
+                                        <span className="text-[10px] text-muted-foreground uppercase font-semibold">Institución Activa</span>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-1.5">
+                                        <Label>Institución *</Label>
+                                        <SearchableSelect
+                                            options={institutions.map((inst) => ({
+                                                value: inst.id,
+                                                label: inst.name,
+                                            }))}
+                                            value={createForm.data.institution_id}
+                                            onChange={(val) => createForm.setData('institution_id', val)}
+                                            placeholder="Seleccionar institución..."
+                                            searchPlaceholder="Buscar institución..."
+                                        />
+                                        {createForm.errors.institution_id && (
+                                            <p className="text-xs text-destructive">{createForm.errors.institution_id}</p>
+                                        )}
+                                    </div>
+                                )}
 
                                 <div className="space-y-1.5">
                                     <Label>Rol y Nivel de Acceso *</Label>

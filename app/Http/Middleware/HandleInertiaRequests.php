@@ -35,12 +35,39 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $user = $request->user();
+        $institutionContextData = null;
+
+        if ($user) {
+            $contextService = app(\App\Services\InstitutionContext::class);
+            $activeInstitution = $contextService->getActiveInstitution($request);
+            $available = $contextService->getAvailableInstitutions($user);
+
+            $institutionContextData = [
+                'current' => $activeInstitution ? [
+                    'id' => $activeInstitution->id,
+                    'name' => $activeInstitution->name,
+                    'slug' => $activeInstitution->slug,
+                    'code' => $activeInstitution->code,
+                ] : null,
+                'available' => $available->map(fn ($inst) => [
+                    'id' => $inst->id,
+                    'name' => $inst->name,
+                    'slug' => $inst->slug,
+                    'code' => $inst->code,
+                ])->values()->all(),
+                'isSuperAdmin' => (bool) $user->isSuperAdmin(),
+                'mode' => $activeInstitution ? 'institution' : 'global',
+            ];
+        }
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
-                'user' => $request->user(),
+                'user' => $user,
             ],
+            'institutionContext' => $institutionContextData,
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];
     }

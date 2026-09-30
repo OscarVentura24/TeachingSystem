@@ -1,5 +1,5 @@
-import { Link } from '@inertiajs/react';
-import { BookMarked, BookOpen, FolderGit2, GraduationCap, LayoutGrid, Library, Users } from 'lucide-react';
+import { Link, usePage } from '@inertiajs/react';
+import { BookMarked, BookOpen, Building2, FolderGit2, GraduationCap, LayoutGrid, Library, Users } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -16,34 +16,6 @@ import {
 import { dashboard } from '@/routes';
 import type { NavItem } from '@/types';
 
-const mainNavItems: NavItem[] = [
-    {
-        title: 'Dashboard',
-        href: dashboard(),
-        icon: LayoutGrid,
-    },
-    {
-        title: 'Cursos',
-        href: '/courses',
-        icon: GraduationCap,
-    },
-    {
-        title: 'Docentes',
-        href: '/teachers',
-        icon: Users,
-    },
-    {
-        title: 'Asignaturas',
-        href: '/subjects',
-        icon: BookMarked,
-    },
-    {
-        title: 'Banco de Temas',
-        href: '/topics',
-        icon: Library,
-    },
-];
-
 const footerNavItems: NavItem[] = [
     {
         title: 'Repository',
@@ -58,6 +30,48 @@ const footerNavItems: NavItem[] = [
 ];
 
 export function AppSidebar() {
+    const { institutionContext } = usePage<{
+        institutionContext?: { isSuperAdmin?: boolean };
+    }>().props;
+    const isSuperAdmin = institutionContext?.isSuperAdmin;
+
+    const navItems: NavItem[] = [
+        {
+            title: 'Dashboard',
+            href: dashboard(),
+            icon: LayoutGrid,
+        },
+        ...(isSuperAdmin
+            ? [
+                  {
+                      title: 'Instituciones',
+                      href: '/institutions',
+                      icon: Building2,
+                  },
+              ]
+            : []),
+        {
+            title: 'Cursos',
+            href: '/courses',
+            icon: GraduationCap,
+        },
+        {
+            title: 'Docentes',
+            href: '/teachers',
+            icon: Users,
+        },
+        {
+            title: 'Asignaturas',
+            href: '/subjects',
+            icon: BookMarked,
+        },
+        {
+            title: 'Banco de Temas',
+            href: '/topics',
+            icon: Library,
+        },
+    ];
+
     return (
         <Sidebar collapsible="icon" variant="inset">
             <SidebarHeader>
@@ -73,7 +87,7 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={mainNavItems} />
+                <NavMain items={navItems} />
             </SidebarContent>
 
             <SidebarFooter>

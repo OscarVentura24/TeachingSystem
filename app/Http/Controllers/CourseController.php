@@ -11,43 +11,62 @@ use App\Models\Topic;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use App\Services\InstitutionContext;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class CourseController extends Controller
 {
+    public function __construct(
+        protected InstitutionContext $contextService
+    ) {}
+
     /**
      * Display a listing of courses.
      */
     public function index(Request $request): Response
     {
         $user = $request->user();
+        $activeInstitutionId = $this->contextService->getActiveInstitutionId($request);
 
         $coursesQuery = Course::with(['institution', 'academicPeriod', 'teachers'])
             ->withCount(['students', 'courseTopics', 'sessions']);
 
-        // If user is not an institution admin anywhere, only show courses they teach or unassigned courses in their institutions
-        if (!$user->isInstitutionAdmin()) {
-            $userInstitutionIds = $user->institutions()->pluck('institutions.id')->toArray();
-            $coursesQuery->where(function ($q) use ($user, $userInstitutionIds) {
-                $q->whereHas('teachers', function ($tq) use ($user) {
-                    $tq->where('users.id', $user->id);
-                })->orWhere(function ($uq) use ($userInstitutionIds) {
-                    $uq->doesntHave('teachers')
-                       ->whereIn('institution_id', $userInstitutionIds);
+        if ($activeInstitutionId) {
+            $coursesQuery->where('institution_id', $activeInstitutionId);
+
+            // If user is not an admin of this institution, restrict to their assigned courses
+            if (!$user->isInstitutionAdmin($activeInstitutionId)) {
+                $coursesQuery->where(function ($q) use ($user) {
+                    $q->whereHas('teachers', function ($tq) use ($user) {
+                        $tq->where('users.id', $user->id);
+                    })->orWhereDoesntHave('teachers');
                 });
-            });
+            }
+        } else {
+            // Global view: if not super admin, restrict to user's institutions
+            if (!$user->isSuperAdmin()) {
+                $userInstitutionIds = $user->institutions()->pluck('institutions.id')->toArray();
+                $coursesQuery->whereIn('institution_id', $userInstitutionIds);
+            }
         }
 
         $courses = $coursesQuery->latest()->get();
 
-        $institutions = Institution::where('is_active', true)->get();
-        $academicPeriods = AcademicPeriod::all();
+        $academicPeriodsQuery = AcademicPeriod::query();
+        if ($activeInstitutionId) {
+            $academicPeriodsQuery->where('institution_id', $activeInstitutionId);
+        }
+        $academicPeriods = $academicPeriodsQuery->get();
+
+        $institutions = $this->contextService->getAvailableInstitutions($user);
+        $activeInstitution = $activeInstitutionId ? Institution::find($activeInstitutionId) : null;
 
         return Inertia::render('courses/index', [
             'courses' => $courses,
             'institutions' => $institutions,
             'academicPeriods' => $academicPeriods,
+            'activeInstitution' => $activeInstitution,
         ]);
     }
 
@@ -56,8 +75,10 @@ class CourseController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        $activeInstitutionId = $this->contextService->getActiveInstitutionId($request);
+
         $validated = $request->validate([
-            'institution_id' => ['required', 'exists:institutions,id'],
+            'institution_id' => [$activeInstitutionId ? 'nullable' : 'required', 'exists:institutions,id'],
             'academic_period_id' => ['nullable', 'exists:academic_periods,id'],
             'name' => ['required', 'string', 'max:255'],
             'section' => ['nullable', 'string', 'max:50'],
@@ -66,7 +87,15 @@ class CourseController extends Controller
             'color' => ['nullable', 'string', 'max:20'],
         ]);
 
-        $course = Course::create($validated);
+        $institutionId = $validated['institution_id'] ?? $activeInstitutionId;
+        if (!$institutionId) {
+            return back()->withErrors(['institution_id' => 'Debes seleccionar una institución.']);
+        }
+
+        $course = Course::create([
+            ...$validated,
+            'institution_id' => $institutionId,
+        ]);
 
         // Assign current user as primary teacher
         $course->teachers()->attach($request->user()->id, ['is_primary' => true]);

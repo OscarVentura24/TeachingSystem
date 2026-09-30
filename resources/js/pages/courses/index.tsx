@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
-import { Plus, GraduationCap, Users, BookOpen, Clock, ArrowRight, Calendar } from 'lucide-react';
+import { Plus, GraduationCap, Users, BookOpen, Clock, ArrowRight, Calendar, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -43,23 +43,26 @@ interface Props {
     courses: CourseItem[];
     institutions: Institution[];
     academicPeriods: AcademicPeriod[];
+    activeInstitution?: { id: number; name: string } | null;
 }
 
-export default function CoursesIndex({ courses, institutions, academicPeriods }: Props) {
+export default function CoursesIndex({ courses, institutions, academicPeriods, activeInstitution }: Props) {
     const [openDialog, setOpenDialog] = useState(false);
     const [openPeriodDialog, setOpenPeriodDialog] = useState(false);
+
+    const defaultInstId = activeInstitution?.id || institutions[0]?.id || '';
 
     const { data, setData, post, processing, errors, reset } = useForm({
         name: '',
         section: '',
         code: '',
-        institution_id: institutions[0]?.id || '',
+        institution_id: defaultInstId,
         academic_period_id: academicPeriods[0]?.id || '',
         description: '',
     });
 
     const periodForm = useForm({
-        institution_id: institutions[0]?.id || '',
+        institution_id: defaultInstId,
         name: '',
         start_date: '',
         end_date: '',
@@ -105,9 +108,18 @@ export default function CoursesIndex({ courses, institutions, academicPeriods }:
             <div className="flex flex-1 flex-col gap-6 p-6">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-5">
                     <div>
-                        <h1 className="text-2xl font-bold tracking-tight text-foreground">Mis Cursos</h1>
+                        <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+                            Cursos
+                            {activeInstitution && (
+                                <span className="text-base font-normal text-muted-foreground">
+                                    • {activeInstitution.name}
+                                </span>
+                            )}
+                        </h1>
                         <p className="text-sm text-muted-foreground">
-                            Gestiona tus asignaturas, pensums y supervisa el progreso de los estudiantes.
+                            {activeInstitution
+                                ? `Gestiona los cursos y materias de ${activeInstitution.name}.`
+                                : 'Gestiona tus asignaturas, pensums y supervisa el progreso de los estudiantes.'}
                         </p>
                     </div>
 
@@ -128,16 +140,26 @@ export default function CoursesIndex({ courses, institutions, academicPeriods }:
                                 </DialogHeader>
 
                                 <form onSubmit={handleCreatePeriodSubmit} className="space-y-4 pt-2">
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor="period_institution">Institución *</Label>
-                                        <SearchableSelect
-                                            options={institutionOptions}
-                                            value={periodForm.data.institution_id}
-                                            onChange={(val) => periodForm.setData('institution_id', val)}
-                                            placeholder="Seleccionar institución..."
-                                            required
-                                        />
-                                    </div>
+                                    {activeInstitution ? (
+                                        <div className="bg-primary/5 border border-primary/20 rounded-md p-2.5 flex items-center justify-between text-xs">
+                                            <div className="flex items-center gap-2">
+                                                <Building2 className="h-4 w-4 text-primary" />
+                                                <span className="font-medium text-foreground">{activeInstitution.name}</span>
+                                            </div>
+                                            <span className="text-[10px] text-muted-foreground uppercase font-semibold">Institución Activa</span>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="period_institution">Institución *</Label>
+                                            <SearchableSelect
+                                                options={institutionOptions}
+                                                value={periodForm.data.institution_id}
+                                                onChange={(val) => periodForm.setData('institution_id', val)}
+                                                placeholder="Seleccionar institución..."
+                                                required
+                                            />
+                                        </div>
+                                    )}
 
                                     <div className="space-y-1.5">
                                         <Label htmlFor="period_name">Nombre del Período *</Label>
@@ -238,20 +260,30 @@ export default function CoursesIndex({ courses, institutions, academicPeriods }:
                                         </div>
                                     </div>
 
-                                    {/* Institution Searchable Select */}
-                                    <div className="space-y-1.5">
-                                        <Label>Institución *</Label>
-                                        <SearchableSelect
-                                            options={institutionOptions}
-                                            value={data.institution_id}
-                                            onChange={(val) => setData('institution_id', val)}
-                                            placeholder="Buscar institución..."
-                                            required
-                                        />
-                                        {errors.institution_id && (
-                                            <p className="text-xs text-destructive">{errors.institution_id}</p>
-                                        )}
-                                    </div>
+                                    {/* Institution Searchable Select or Active Institution Badge */}
+                                    {activeInstitution ? (
+                                        <div className="bg-primary/5 border border-primary/20 rounded-md p-2.5 flex items-center justify-between text-xs">
+                                            <div className="flex items-center gap-2">
+                                                <Building2 className="h-4 w-4 text-primary" />
+                                                <span className="font-medium text-foreground">{activeInstitution.name}</span>
+                                            </div>
+                                            <span className="text-[10px] text-muted-foreground uppercase font-semibold">Institución Activa</span>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-1.5">
+                                            <Label>Institución *</Label>
+                                            <SearchableSelect
+                                                options={institutionOptions}
+                                                value={data.institution_id}
+                                                onChange={(val) => setData('institution_id', val)}
+                                                placeholder="Buscar institución..."
+                                                required
+                                            />
+                                            {errors.institution_id && (
+                                                <p className="text-xs text-destructive">{errors.institution_id}</p>
+                                            )}
+                                        </div>
+                                    )}
 
                                     {/* Academic Period Searchable Select with quick add */}
                                     <div className="space-y-1.5">

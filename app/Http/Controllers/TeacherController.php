@@ -6,6 +6,7 @@ use App\Models\Course;
 use App\Models\Institution;
 use App\Models\InstitutionMembership;
 use App\Models\User;
+use App\Services\InstitutionContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -15,25 +16,33 @@ use Inertia\Response;
 
 class TeacherController extends Controller
 {
+    public function __construct(
+        protected InstitutionContext $contextService
+    ) {}
+
     /**
      * Display a listing of teachers and staff.
      */
     public function index(Request $request): Response
     {
         $currentUser = $request->user();
-        $isGlobalOrInstAdmin = $currentUser->isInstitutionAdmin();
+        $activeInstitutionId = $this->contextService->getActiveInstitutionId($request);
+        $isGlobalOrInstAdmin = $currentUser->isInstitutionAdmin($activeInstitutionId);
 
-        $institutions = Institution::where('is_active', true)->get();
-        $institutionIds = $institutions->pluck('id')->toArray();
+        $institutions = $this->contextService->getAvailableInstitutions($currentUser);
+        $institutionIds = $activeInstitutionId ? [$activeInstitutionId] : $institutions->pluck('id')->toArray();
 
         // Get all users who belong to these institutions
         $teachers = User::whereHas('institutionMemberships', function ($q) use ($institutionIds) {
             $q->whereIn('institution_id', $institutionIds);
         })
         ->with([
-            'institutionMemberships.institution',
-            'taughtCourses' => function ($q) {
-                $q->select('courses.id', 'courses.name', 'courses.section', 'courses.institution_id');
+            'institutionMemberships' => function ($q) use ($institutionIds) {
+                $q->whereIn('institution_id', $institutionIds)->with('institution');
+            },
+            'taughtCourses' => function ($q) use ($institutionIds) {
+                $q->select('courses.id', 'courses.name', 'courses.section', 'courses.institution_id')
+                  ->whereIn('institution_id', $institutionIds);
             },
         ])
         ->withCount('createdSessions')
@@ -59,17 +68,25 @@ class TeacherController extends Controller
             ];
         });
 
-        // Courses for dropdown assignments
-        $courses = Course::with('institution')
-            ->where('status', 'active')
-            ->orderBy('name')
+        // Courses for dropdown assignments (scoped to active institution if selected)
+        $coursesQuery = Course::with('institution')
+            ->where('status', 'active');
+
+        if ($activeInstitutionId) {
+            $coursesQuery->where('institution_id', $activeInstitutionId);
+        }
+
+        $courses = $coursesQuery->orderBy('name')
             ->get(['id', 'name', 'section', 'institution_id']);
+
+        $activeInstitution = $activeInstitutionId ? Institution::find($activeInstitutionId) : null;
 
         return Inertia::render('teachers/index', [
             'teachers' => $teachers,
             'institutions' => $institutions,
             'courses' => $courses,
             'isCurrentUserAdmin' => $isGlobalOrInstAdmin,
+            'activeInstitution' => $activeInstitution,
         ]);
     }
 
@@ -78,15 +95,22 @@ class TeacherController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        $activeInstitutionId = $this->contextService->getActiveInstitutionId($request);
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['nullable', 'string', 'min:8'],
-            'institution_id' => ['required', 'exists:institutions,id'],
+            'institution_id' => [$activeInstitutionId ? 'nullable' : 'required', 'exists:institutions,id'],
             'role' => ['required', 'string', Rule::in(['teacher', 'admin'])],
             'course_ids' => ['nullable', 'array'],
             'course_ids.*' => ['exists:courses,id'],
         ]);
+
+        $institutionId = $validated['institution_id'] ?? $activeInstitutionId;
+        if (!$institutionId) {
+            return back()->withErrors(['institution_id' => 'Debes seleccionar una institución.']);
+        }
 
         $defaultPassword = $validated['password'] ?? 'Docente2026*';
 
@@ -98,7 +122,7 @@ class TeacherController extends Controller
         ]);
 
         InstitutionMembership::create([
-            'institution_id' => $validated['institution_id'],
+            'institution_id' => $institutionId,
             'user_id' => $teacher->id,
             'role' => $validated['role'],
             'is_active' => true,
