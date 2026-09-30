@@ -10,6 +10,7 @@ use App\Models\Enrollment;
 use App\Models\Institution;
 use App\Models\Student;
 use App\Models\StudentTopicProgress;
+use App\Models\Subject;
 use App\Models\Topic;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -67,7 +68,34 @@ class DatabaseSeeder extends Seeder
             $teacher->id => ['is_primary' => true],
         ]);
 
-        // 5. Global Topics with sequential prerequisites
+        // 5. Subjects & Global Topics with sequential prerequisites
+        $subjectWeb = Subject::firstOrCreate(
+            ['name' => 'Programación Web'],
+            [
+                'code' => 'PW-101',
+                'description' => 'Desarrollo web frontend con HTML5, CSS3 y JavaScript moderno.',
+                'is_active' => true,
+            ]
+        );
+
+        Subject::firstOrCreate(
+            ['name' => 'Bases de Datos'],
+            [
+                'code' => 'BD-102',
+                'description' => 'Modelado relacional, SQL y optimización de consultas.',
+                'is_active' => true,
+            ]
+        );
+
+        Subject::firstOrCreate(
+            ['name' => 'Algoritmos y Lógica'],
+            [
+                'code' => 'ALG-103',
+                'description' => 'Estructuras de datos y resolución algorítmica.',
+                'is_active' => true,
+            ]
+        );
+
         $topicsData = [
             ['title' => 'HTML5 Estructura y Etiquetas Semánticas', 'area' => 'Programación Web', 'unit' => 'Unidad 1', 'desc' => 'Fundamentos del marcado web.'],
             ['title' => 'CSS3 Selectores y Modelo de Caja', 'area' => 'Programación Web', 'unit' => 'Unidad 1', 'desc' => 'Estilos y dimensionamiento.'],
@@ -84,6 +112,7 @@ class DatabaseSeeder extends Seeder
                 ['title' => $data['title']],
                 [
                     'created_by_user_id' => $teacher->id,
+                    'subject_id' => $subjectWeb->id,
                     'area' => $data['area'],
                     'unit_title' => $data['unit'],
                     'description' => $data['desc'],

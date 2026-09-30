@@ -14,6 +14,7 @@ class Topic extends Model
 
     protected $fillable = [
         'created_by_user_id',
+        'subject_id',
         'title',
         'area',
         'unit_title',
@@ -30,6 +31,11 @@ class Topic extends Model
             'estimated_minutes' => 'integer',
             'is_active' => 'boolean',
         ];
+    }
+
+    public function subject(): BelongsTo
+    {
+        return $this->belongsTo(Subject::class);
     }
 
     public function creator(): BelongsTo

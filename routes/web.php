@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ClassSessionController;
 use App\Http\Controllers\CourseController;
 use App\Http\Controllers\EnrollmentController;
+use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\TopicController;
 
 Route::inertia('/', 'welcome')->name('home');
@@ -22,6 +23,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Enrollments
     Route::post('/courses/{course}/enrollments', [EnrollmentController::class, 'store'])->name('courses.enrollments.store');
     Route::post('/courses/{course}/enrollments/create-and-enroll', [EnrollmentController::class, 'createAndEnroll'])->name('courses.enrollments.create');
+
+    // Subjects (Asignaturas)
+    Route::get('/subjects', [SubjectController::class, 'index'])->name('subjects.index');
+    Route::post('/subjects', [SubjectController::class, 'store'])->name('subjects.store');
 
     // Global Topics Bank
     Route::get('/topics', [TopicController::class, 'index'])->name('topics.index');

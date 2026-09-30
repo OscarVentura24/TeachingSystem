@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Subject;
 use App\Models\Topic;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,15 +16,20 @@ class TopicController extends Controller
      */
     public function index(): Response
     {
-        $topics = Topic::with('prerequisites')
+        $topics = Topic::with(['prerequisites', 'subject'])
             ->orderBy('area')
             ->orderBy('title')
+            ->get();
+
+        $subjects = Subject::where('is_active', true)
+            ->orderBy('name')
             ->get();
 
         $areas = Topic::distinct()->pluck('area')->filter()->values();
 
         return Inertia::render('topics/index', [
             'topics' => $topics,
+            'subjects' => $subjects,
             'areas' => $areas,
         ]);
     }
@@ -35,7 +41,8 @@ class TopicController extends Controller
     {
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
-            'area' => ['required', 'string', 'max:100'],
+            'subject_id' => ['nullable', 'exists:subjects,id'],
+            'area' => ['nullable', 'string', 'max:100'],
             'unit_title' => ['nullable', 'string', 'max:255'],
             'short_summary' => ['nullable', 'string', 'max:500'],
             'description' => ['nullable', 'string'],
@@ -45,10 +52,22 @@ class TopicController extends Controller
             'prerequisite_ids.*' => ['integer', 'exists:topics,id'],
         ]);
 
+        // If subject_id is provided, derive area name from the subject
+        $area = $validated['area'] ?? null;
+        if (! empty($validated['subject_id'])) {
+            $subject = Subject::find($validated['subject_id']);
+            if ($subject) {
+                $area = $subject->name;
+            }
+        } elseif (empty($area)) {
+            $area = 'General';
+        }
+
         $topic = Topic::create([
             'created_by_user_id' => $request->user()->id,
+            'subject_id' => $validated['subject_id'] ?? null,
             'title' => $validated['title'],
-            'area' => $validated['area'],
+            'area' => $area,
             'unit_title' => $validated['unit_title'] ?? null,
             'short_summary' => $validated['short_summary'] ?? null,
             'description' => $validated['description'] ?? null,
