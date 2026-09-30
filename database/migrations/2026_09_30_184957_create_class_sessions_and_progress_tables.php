@@ -50,7 +50,7 @@ return new class extends Migration
 
         Schema::create('student_topic_progress', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('class_session_id')->constrained('class_sessions')->cascadeOnDelete();
+            $table->foreignId('class_session_id')->nullable()->constrained('class_sessions')->cascadeOnDelete();
             $table->foreignId('student_id')->constrained('students')->cascadeOnDelete();
             $table->foreignId('course_topic_id')->constrained('course_topics')->cascadeOnDelete();
             
@@ -64,7 +64,7 @@ return new class extends Migration
             $table->timestamp('evaluated_at')->nullable();
             $table->timestamps();
 
-            $table->unique(['class_session_id', 'student_id', 'course_topic_id']);
+            $table->index(['class_session_id', 'student_id', 'course_topic_id']);
             $table->index(['student_id', 'course_topic_id']);
         });
     }
