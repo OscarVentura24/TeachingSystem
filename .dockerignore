@@ -1,0 +1,16 @@
+.git
+.github
+node_modules
+vendor
+storage/*.key
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/logs/*
+.env
+.env.backup
+.env.production
+.phpunit.result.cache
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
