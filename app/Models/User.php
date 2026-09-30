@@ -48,4 +48,34 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             'two_factor_confirmed_at' => 'datetime',
         ];
     }
+
+    public function institutionMemberships(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(InstitutionMembership::class);
+    }
+
+    public function institutions(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(Institution::class, 'institution_memberships')
+            ->withPivot('role', 'is_active')
+            ->withTimestamps();
+    }
+
+    public function taughtCourses(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(Course::class, 'course_teachers')
+            ->withPivot('is_primary')
+            ->withTimestamps();
+    }
+
+    public function createdSessions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ClassSession::class, 'created_by_user_id');
+    }
+
+    public function createdTopics(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Topic::class, 'created_by_user_id');
+    }
 }
+
