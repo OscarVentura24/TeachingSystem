@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm, router } from '@inertiajs/react';
 import {
     Plus,
     Library,
@@ -8,8 +8,8 @@ import {
     GitFork,
     LayoutGrid,
     List,
-    BookMarked,
-    Sparkles,
+    Pencil,
+    Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -53,11 +53,24 @@ interface Props {
 export default function TopicsIndex({ topics, subjects, areas }: Props) {
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [openDialog, setOpenDialog] = useState(false);
+    const [openEditDialog, setOpenEditDialog] = useState(false);
+    const [editingTopic, setEditingTopic] = useState<TopicItem | null>(null);
     const [selectedArea, setSelectedArea] = useState<string>('all');
     const [search, setSearch] = useState('');
-    const [subjectSearch, setSubjectSearch] = useState('');
 
-    const { data, setData, post, processing, errors, reset } = useForm({
+    const createForm = useForm({
+        title: '',
+        subject_id: '',
+        area: '',
+        unit_title: '',
+        short_summary: '',
+        description: '',
+        resources_notes: '',
+        estimated_minutes: '',
+        prerequisite_ids: [] as number[],
+    });
+
+    const editForm = useForm({
         title: '',
         subject_id: '',
         area: '',
@@ -82,29 +95,78 @@ export default function TopicsIndex({ topics, subjects, areas }: Props) {
         return matchesArea && matchesSearch;
     });
 
-    const filteredSubjectsForSelect = subjects.filter((s) =>
-        s.name.toLowerCase().includes(subjectSearch.toLowerCase()) ||
-        (s.code && s.code.toLowerCase().includes(subjectSearch.toLowerCase()))
-    );
-
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleCreateSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        post('/topics', {
+        createForm.post('/topics', {
             onSuccess: () => {
                 setOpenDialog(false);
-                reset();
+                createForm.reset();
             },
         });
     };
 
-    const togglePrerequisite = (id: number) => {
-        setData(
+    const handleStartEdit = (topic: TopicItem) => {
+        setEditingTopic(topic);
+        editForm.setData({
+            title: topic.title || '',
+            subject_id: topic.subject_id ? String(topic.subject_id) : '',
+            area: topic.area || '',
+            unit_title: topic.unit_title || '',
+            short_summary: topic.short_summary || '',
+            description: topic.description || '',
+            resources_notes: topic.resources_notes || '',
+            estimated_minutes: topic.estimated_minutes ? String(topic.estimated_minutes) : '',
+            prerequisite_ids: topic.prerequisites ? topic.prerequisites.map((p) => p.id) : [],
+        });
+        setOpenEditDialog(true);
+    };
+
+    const handleEditSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingTopic) return;
+
+        editForm.put(`/topics/${editingTopic.id}`, {
+            onSuccess: () => {
+                setOpenEditDialog(false);
+                setEditingTopic(null);
+                editForm.reset();
+            },
+        });
+    };
+
+    const handleDelete = (topic: TopicItem) => {
+        if (
+            confirm(
+                `¿Estás seguro de eliminar el tema "${topic.title}" del Banco Global?\n\nLos cursos que ya tengan este tema en su pensum conservarán su copia local histórica, pero ya no aparecerá disponible para nuevos cursos.`
+            )
+        ) {
+            router.delete(`/topics/${topic.id}`);
+        }
+    };
+
+    const toggleCreatePrerequisite = (id: number) => {
+        createForm.setData(
             'prerequisite_ids',
-            data.prerequisite_ids.includes(id)
-                ? data.prerequisite_ids.filter((p) => p !== id)
-                : [...data.prerequisite_ids, id]
+            createForm.data.prerequisite_ids.includes(id)
+                ? createForm.data.prerequisite_ids.filter((p) => p !== id)
+                : [...createForm.data.prerequisite_ids, id]
         );
     };
+
+    const toggleEditPrerequisite = (id: number) => {
+        editForm.setData(
+            'prerequisite_ids',
+            editForm.data.prerequisite_ids.includes(id)
+                ? editForm.data.prerequisite_ids.filter((p) => p !== id)
+                : [...editForm.data.prerequisite_ids, id]
+        );
+    };
+
+    const subjectOptions = subjects.map((sub) => ({
+        value: sub.id,
+        label: sub.name,
+        subLabel: sub.code,
+    }));
 
     return (
         <>
@@ -145,6 +207,7 @@ export default function TopicsIndex({ topics, subjects, areas }: Props) {
                             </Button>
                         </div>
 
+                        {/* Create Topic Dialog */}
                         <Dialog open={openDialog} onOpenChange={setOpenDialog}>
                             <DialogTrigger asChild>
                                 <Button className="gap-2">
@@ -159,24 +222,25 @@ export default function TopicsIndex({ topics, subjects, areas }: Props) {
                                     </DialogDescription>
                                 </DialogHeader>
 
-                                <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+                                <form onSubmit={handleCreateSubmit} className="space-y-4 pt-2">
                                     <div className="space-y-1.5">
-                                        <Label htmlFor="title">Título del Tema *</Label>
+                                        <Label htmlFor="create_title">Título del Tema *</Label>
                                         <Input
-                                            id="title"
+                                            id="create_title"
                                             placeholder="Ej: Programación Orientada a Objetos: Clases y Objetos"
-                                            value={data.title}
-                                            onChange={(e) => setData('title', e.target.value)}
+                                            value={createForm.data.title}
+                                            onChange={(e) => createForm.setData('title', e.target.value)}
                                             required
                                         />
-                                        {errors.title && <p className="text-xs text-destructive">{errors.title}</p>}
+                                        {createForm.errors.title && (
+                                            <p className="text-xs text-destructive">{createForm.errors.title}</p>
+                                        )}
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-3">
-                                        {/* Asignatura Selector */}
                                         <div className="space-y-1.5">
                                             <div className="flex items-center justify-between">
-                                                <Label htmlFor="subject_id">Asignatura *</Label>
+                                                <Label htmlFor="create_subject_id">Asignatura *</Label>
                                                 <Link
                                                     href="/subjects"
                                                     className="text-[10px] text-primary hover:underline flex items-center gap-1"
@@ -187,17 +251,13 @@ export default function TopicsIndex({ topics, subjects, areas }: Props) {
 
                                             {subjects.length > 0 ? (
                                                 <SearchableSelect
-                                                    options={subjects.map((sub) => ({
-                                                        value: sub.id,
-                                                        label: sub.name,
-                                                        subLabel: sub.code,
-                                                    }))}
-                                                    value={data.subject_id}
+                                                    options={subjectOptions}
+                                                    value={createForm.data.subject_id}
                                                     onChange={(sId) => {
-                                                        setData('subject_id', sId);
+                                                        createForm.setData('subject_id', sId);
                                                         const found = subjects.find((s) => s.id === Number(sId));
                                                         if (found) {
-                                                            setData('area', found.name);
+                                                            createForm.setData('area', found.name);
                                                         }
                                                     }}
                                                     placeholder="Buscar asignatura..."
@@ -207,10 +267,10 @@ export default function TopicsIndex({ topics, subjects, areas }: Props) {
                                             ) : (
                                                 <div className="space-y-1">
                                                     <Input
-                                                        id="area"
+                                                        id="create_area"
                                                         placeholder="Ej: Programación Web"
-                                                        value={data.area}
-                                                        onChange={(e) => setData('area', e.target.value)}
+                                                        value={createForm.data.area}
+                                                        onChange={(e) => createForm.setData('area', e.target.value)}
                                                         required
                                                     />
                                                     <span className="text-[10px] text-muted-foreground">
@@ -218,49 +278,51 @@ export default function TopicsIndex({ topics, subjects, areas }: Props) {
                                                     </span>
                                                 </div>
                                             )}
-                                            {errors.subject_id && <p className="text-xs text-destructive">{errors.subject_id}</p>}
+                                            {createForm.errors.subject_id && (
+                                                <p className="text-xs text-destructive">{createForm.errors.subject_id}</p>
+                                            )}
                                         </div>
 
                                         <div className="space-y-1.5">
-                                            <Label htmlFor="unit_title">Unidad Sugerida</Label>
+                                            <Label htmlFor="create_unit_title">Unidad Sugerida</Label>
                                             <Input
-                                                id="unit_title"
+                                                id="create_unit_title"
                                                 placeholder="Ej: Unidad 2"
-                                                value={data.unit_title}
-                                                onChange={(e) => setData('unit_title', e.target.value)}
+                                                value={createForm.data.unit_title}
+                                                onChange={(e) => createForm.setData('unit_title', e.target.value)}
                                             />
                                         </div>
                                     </div>
 
                                     <div className="space-y-1.5">
-                                        <Label htmlFor="short_summary">Resumen Breve</Label>
+                                        <Label htmlFor="create_short_summary">Resumen Breve</Label>
                                         <Input
-                                            id="short_summary"
+                                            id="create_short_summary"
                                             placeholder="Explicación en 1 o 2 oraciones"
-                                            value={data.short_summary}
-                                            onChange={(e) => setData('short_summary', e.target.value)}
+                                            value={createForm.data.short_summary}
+                                            onChange={(e) => createForm.setData('short_summary', e.target.value)}
                                         />
                                     </div>
 
                                     <div className="space-y-1.5">
-                                        <Label htmlFor="description">Descripción Detallada y Contenido</Label>
+                                        <Label htmlFor="create_description">Descripción Detallada y Contenido</Label>
                                         <textarea
-                                            id="description"
+                                            id="create_description"
                                             rows={3}
-                                            value={data.description}
-                                            onChange={(e) => setData('description', e.target.value)}
+                                            value={createForm.data.description}
+                                            onChange={(e) => createForm.setData('description', e.target.value)}
                                             placeholder="Detalles sobre lo que se explica en este tema..."
                                             className="w-full bg-background border rounded-md p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                                         />
                                     </div>
 
                                     <div className="space-y-1.5">
-                                        <Label htmlFor="resources_notes">Recursos / Links / Material Didáctico</Label>
+                                        <Label htmlFor="create_resources_notes">Recursos / Links / Material Didáctico</Label>
                                         <Input
-                                            id="resources_notes"
+                                            id="create_resources_notes"
                                             placeholder="Ej: Diapositivas, repositorio GitHub, ejercicios"
-                                            value={data.resources_notes}
-                                            onChange={(e) => setData('resources_notes', e.target.value)}
+                                            value={createForm.data.resources_notes}
+                                            onChange={(e) => createForm.setData('resources_notes', e.target.value)}
                                         />
                                     </div>
 
@@ -280,8 +342,8 @@ export default function TopicsIndex({ topics, subjects, areas }: Props) {
                                                     >
                                                         <input
                                                             type="checkbox"
-                                                            checked={data.prerequisite_ids.includes(t.id)}
-                                                            onChange={() => togglePrerequisite(t.id)}
+                                                            checked={createForm.data.prerequisite_ids.includes(t.id)}
+                                                            onChange={() => toggleCreatePrerequisite(t.id)}
                                                             className="rounded text-primary"
                                                         />
                                                         <span className="font-medium text-foreground">{t.title}</span>
@@ -296,8 +358,162 @@ export default function TopicsIndex({ topics, subjects, areas }: Props) {
                                         <Button type="button" variant="outline" onClick={() => setOpenDialog(false)}>
                                             Cancelar
                                         </Button>
-                                        <Button type="submit" disabled={processing}>
+                                        <Button type="submit" disabled={createForm.processing}>
                                             Guardar Tema
+                                        </Button>
+                                    </div>
+                                </form>
+                            </DialogContent>
+                        </Dialog>
+
+                        {/* Edit Topic Dialog */}
+                        <Dialog open={openEditDialog} onOpenChange={setOpenEditDialog}>
+                            <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+                                <DialogHeader>
+                                    <DialogTitle>Editar Tema Didáctico</DialogTitle>
+                                    <DialogDescription>
+                                        Modifica la información didáctica, asignatura y prerrequisitos del tema.
+                                    </DialogDescription>
+                                </DialogHeader>
+
+                                <form onSubmit={handleEditSubmit} className="space-y-4 pt-2">
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="edit_title">Título del Tema *</Label>
+                                        <Input
+                                            id="edit_title"
+                                            value={editForm.data.title}
+                                            onChange={(e) => editForm.setData('title', e.target.value)}
+                                            required
+                                        />
+                                        {editForm.errors.title && (
+                                            <p className="text-xs text-destructive">{editForm.errors.title}</p>
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1.5">
+                                            <div className="flex items-center justify-between">
+                                                <Label htmlFor="edit_subject_id">Asignatura *</Label>
+                                                <Link
+                                                    href="/subjects"
+                                                    className="text-[10px] text-primary hover:underline flex items-center gap-1"
+                                                >
+                                                    <Plus className="h-2.5 w-2.5" /> Nueva
+                                                </Link>
+                                            </div>
+
+                                            {subjects.length > 0 ? (
+                                                <SearchableSelect
+                                                    options={subjectOptions}
+                                                    value={editForm.data.subject_id}
+                                                    onChange={(sId) => {
+                                                        editForm.setData('subject_id', sId);
+                                                        const found = subjects.find((s) => s.id === Number(sId));
+                                                        if (found) {
+                                                            editForm.setData('area', found.name);
+                                                        }
+                                                    }}
+                                                    placeholder="Buscar asignatura..."
+                                                    searchPlaceholder="Buscar por nombre o código..."
+                                                    required
+                                                />
+                                            ) : (
+                                                <Input
+                                                    id="edit_area"
+                                                    value={editForm.data.area}
+                                                    onChange={(e) => editForm.setData('area', e.target.value)}
+                                                    required
+                                                />
+                                            )}
+                                            {editForm.errors.subject_id && (
+                                                <p className="text-xs text-destructive">{editForm.errors.subject_id}</p>
+                                            )}
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="edit_unit_title">Unidad Sugerida</Label>
+                                            <Input
+                                                id="edit_unit_title"
+                                                placeholder="Ej: Unidad 2"
+                                                value={editForm.data.unit_title}
+                                                onChange={(e) => editForm.setData('unit_title', e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="edit_short_summary">Resumen Breve</Label>
+                                        <Input
+                                            id="edit_short_summary"
+                                            value={editForm.data.short_summary}
+                                            onChange={(e) => editForm.setData('short_summary', e.target.value)}
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="edit_description">Descripción Detallada y Contenido</Label>
+                                        <textarea
+                                            id="edit_description"
+                                            rows={3}
+                                            value={editForm.data.description}
+                                            onChange={(e) => editForm.setData('description', e.target.value)}
+                                            className="w-full bg-background border rounded-md p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="edit_resources_notes">Recursos / Links / Material Didáctico</Label>
+                                        <Input
+                                            id="edit_resources_notes"
+                                            value={editForm.data.resources_notes}
+                                            onChange={(e) => editForm.setData('resources_notes', e.target.value)}
+                                        />
+                                    </div>
+
+                                    {/* Prerequisite checklist excluding current topic */}
+                                    {topics.filter((t) => t.id !== editingTopic?.id).length > 0 && (
+                                        <div className="space-y-2 pt-2 border-t">
+                                            <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                                                <GitFork className="h-3.5 w-3.5 text-primary" /> Prerrequisitos Opcionales
+                                            </Label>
+                                            <p className="text-[11px] text-muted-foreground">
+                                                Selecciona qué temas deben dominarse antes de poder aprender este tema.
+                                            </p>
+                                            <div className="max-h-36 overflow-y-auto space-y-1.5 p-2 bg-muted/30 rounded-lg border text-xs">
+                                                {topics
+                                                    .filter((t) => t.id !== editingTopic?.id)
+                                                    .map((t) => (
+                                                        <label
+                                                            key={t.id}
+                                                            className="flex items-center gap-2 p-1.5 rounded hover:bg-muted/50 cursor-pointer"
+                                                        >
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={editForm.data.prerequisite_ids.includes(t.id)}
+                                                                onChange={() => toggleEditPrerequisite(t.id)}
+                                                                className="rounded text-primary"
+                                                            />
+                                                            <span className="font-medium text-foreground">{t.title}</span>
+                                                            <span className="text-[10px] text-muted-foreground">({t.area})</span>
+                                                        </label>
+                                                    ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="flex justify-end gap-2 pt-2">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => {
+                                                setOpenEditDialog(false);
+                                                setEditingTopic(null);
+                                            }}
+                                        >
+                                            Cancelar
+                                        </Button>
+                                        <Button type="submit" disabled={editForm.processing}>
+                                            {editForm.processing ? 'Actualizando...' : 'Guardar Cambios'}
                                         </Button>
                                     </div>
                                 </form>
@@ -357,15 +573,40 @@ export default function TopicsIndex({ topics, subjects, areas }: Props) {
                                 className="flex flex-col justify-between rounded-xl border bg-card p-5 shadow-sm hover:border-primary/40 transition-colors"
                             >
                                 <div>
-                                    <div className="flex items-center justify-between gap-2">
-                                        <span className="text-[11px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded">
-                                            {topic.subject?.name || topic.area}
-                                        </span>
-                                        {topic.unit_title && (
-                                            <span className="text-[10px] text-muted-foreground">
-                                                {topic.unit_title}
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            <span className="text-[11px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded">
+                                                {topic.subject?.name || topic.area}
                                             </span>
-                                        )}
+                                            {topic.unit_title && (
+                                                <span className="text-[10px] text-muted-foreground font-medium">
+                                                    {topic.unit_title}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                                                onClick={() => handleStartEdit(topic)}
+                                                title="Editar tema"
+                                            >
+                                                <Pencil className="h-3.5 w-3.5" />
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                                onClick={() => handleDelete(topic)}
+                                                title="Eliminar tema"
+                                            >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </div>
                                     </div>
 
                                     <h3 className="mt-2.5 text-base font-semibold text-foreground">
@@ -423,6 +664,9 @@ export default function TopicsIndex({ topics, subjects, areas }: Props) {
                                     <th className="px-4 py-3 font-semibold text-foreground max-w-xs">
                                         Resumen
                                     </th>
+                                    <th className="px-4 py-3 font-semibold text-foreground text-right min-w-[80px]">
+                                        Acciones
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
@@ -457,6 +701,30 @@ export default function TopicsIndex({ topics, subjects, areas }: Props) {
                                         </td>
                                         <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">
                                             {topic.short_summary || topic.description || '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                            <div className="flex items-center justify-end gap-1">
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                                                    onClick={() => handleStartEdit(topic)}
+                                                    title="Editar tema"
+                                                >
+                                                    <Pencil className="h-3.5 w-3.5" />
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                                    onClick={() => handleDelete(topic)}
+                                                    title="Eliminar tema"
+                                                >
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}

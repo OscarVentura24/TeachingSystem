@@ -14,6 +14,7 @@ import {
     GraduationCap,
     Trash2,
     UserCheck,
+    Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -102,6 +103,15 @@ export default function CourseShow({
     const [openAddTopicDialog, setOpenAddTopicDialog] = useState(false);
     const [openEnrollDialog, setOpenEnrollDialog] = useState(false);
     const [openAddTeacherDialog, setOpenAddTeacherDialog] = useState(false);
+    const [openEditCourseDialog, setOpenEditCourseDialog] = useState(false);
+
+    // Form to edit course
+    const editCourseForm = useForm({
+        name: course.name,
+        section: course.section || '',
+        code: course.code || '',
+        description: '',
+    });
 
     // Form to assign teacher to course
     const addTeacherForm = useForm({
@@ -175,6 +185,27 @@ export default function CourseShow({
         }
     };
 
+    const handleEditCourseSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        editCourseForm.put(`/courses/${course.id}`, {
+            onSuccess: () => {
+                setOpenEditCourseDialog(false);
+            },
+        });
+    };
+
+    const handleRemoveTopicFromPensum = (topicId: number, title: string) => {
+        if (confirm(`¿Estás seguro de retirar el tema "${title}" del pensum de este curso?`)) {
+            router.delete(`/courses/${course.id}/topics/${topicId}`);
+        }
+    };
+
+    const handleRemoveStudent = (studentId: number, name: string) => {
+        if (confirm(`¿Desmatricular a "${name}" de este curso?\n\nSus registros históricos en sesiones previas se conservarán.`)) {
+            router.delete(`/courses/${course.id}/students/${studentId}`);
+        }
+    };
+
     return (
         <>
             <Head title={`${course.name} - TeachingSystem`} />
@@ -202,11 +233,78 @@ export default function CourseShow({
                     </div>
 
                     <div className="flex items-center gap-3">
+                        <Button
+                            variant="outline"
+                            className="gap-2"
+                            onClick={() => setOpenEditCourseDialog(true)}
+                        >
+                            <Pencil className="h-4 w-4" /> Editar Curso
+                        </Button>
+
                         <Link href={`/courses/${course.id}/sessions/create`}>
                             <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
                                 <Play className="h-4 w-4 fill-white" /> Iniciar Sesión de Clase
                             </Button>
                         </Link>
+
+                        {/* Edit Course Dialog */}
+                        <Dialog open={openEditCourseDialog} onOpenChange={setOpenEditCourseDialog}>
+                            <DialogContent className="sm:max-w-md">
+                                <DialogHeader>
+                                    <DialogTitle>Editar Información del Curso</DialogTitle>
+                                    <DialogDescription>
+                                        Modifica el nombre, sección o código de este curso.
+                                    </DialogDescription>
+                                </DialogHeader>
+
+                                <form onSubmit={handleEditCourseSubmit} className="space-y-4 pt-2">
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="edit_course_name">Nombre del Curso *</Label>
+                                        <Input
+                                            id="edit_course_name"
+                                            value={editCourseForm.data.name}
+                                            onChange={(e) => editCourseForm.setData('name', e.target.value)}
+                                            required
+                                        />
+                                        {editCourseForm.errors.name && (
+                                            <p className="text-xs text-destructive">{editCourseForm.errors.name}</p>
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="edit_course_section">Sección / Turno</Label>
+                                            <Input
+                                                id="edit_course_section"
+                                                value={editCourseForm.data.section}
+                                                onChange={(e) => editCourseForm.setData('section', e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="edit_course_code">Código</Label>
+                                            <Input
+                                                id="edit_course_code"
+                                                value={editCourseForm.data.code}
+                                                onChange={(e) => editCourseForm.setData('code', e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex justify-end gap-2 pt-2">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => setOpenEditCourseDialog(false)}
+                                        >
+                                            Cancelar
+                                        </Button>
+                                        <Button type="submit" disabled={editCourseForm.processing}>
+                                            {editCourseForm.processing ? 'Actualizando...' : 'Guardar Cambios'}
+                                        </Button>
+                                    </div>
+                                </form>
+                            </DialogContent>
+                        </Dialog>
                     </div>
                 </div>
 
@@ -399,6 +497,17 @@ export default function CourseShow({
                                                 )}
                                             </div>
                                         </div>
+
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive shrink-0"
+                                            onClick={() => handleRemoveTopicFromPensum(topic.id, topic.title)}
+                                            title="Retirar tema del pensum"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
                                     </div>
                                 ))}
                             </div>
@@ -502,6 +611,7 @@ export default function CourseShow({
                                             <th className="px-4 py-3 font-semibold text-foreground">Nombre Completo</th>
                                             <th className="px-4 py-3 font-semibold text-foreground">Cédula/Carnet</th>
                                             <th className="px-4 py-3 font-semibold text-foreground">Puesto/PC Asignada</th>
+                                            <th className="px-4 py-3 font-semibold text-foreground text-right min-w-[70px]">Acciones</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border">
@@ -521,6 +631,18 @@ export default function CourseShow({
                                                     ) : (
                                                         <span className="text-muted-foreground">Sin puesto fijo</span>
                                                     )}
+                                                </td>
+                                                <td className="px-4 py-3 text-right">
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                                        onClick={() => handleRemoveStudent(student.id, `${student.first_name} ${student.last_name}`)}
+                                                        title="Desmatricular estudiante"
+                                                    >
+                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                    </Button>
                                                 </td>
                                             </tr>
                                         ))}

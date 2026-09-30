@@ -17,8 +17,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/courses', [CourseController::class, 'index'])->name('courses.index');
     Route::post('/courses', [CourseController::class, 'store'])->name('courses.store');
     Route::get('/courses/{course}', [CourseController::class, 'show'])->name('courses.show');
+    Route::put('/courses/{course}', [CourseController::class, 'update'])->name('courses.update');
+    Route::delete('/courses/{course}', [CourseController::class, 'destroy'])->name('courses.destroy');
     Route::post('/courses/{course}/topics', [CourseController::class, 'addTopic'])->name('courses.topics.add');
+    Route::delete('/courses/{course}/topics/{courseTopic}', [CourseController::class, 'removeTopic'])->name('courses.topics.remove');
     Route::post('/courses/{course}/topics/reorder', [CourseController::class, 'reorderTopics'])->name('courses.topics.reorder');
+    Route::delete('/courses/{course}/students/{student}', [CourseController::class, 'removeStudent'])->name('courses.students.remove');
 
     // Enrollments
     Route::post('/courses/{course}/enrollments', [EnrollmentController::class, 'store'])->name('courses.enrollments.store');
@@ -32,11 +36,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Academic Periods (Períodos Académicos)
     Route::post('/academic-periods', [\App\Http\Controllers\AcademicPeriodController::class, 'store'])->name('academic-periods.store');
+    Route::put('/academic-periods/{academicPeriod}', [\App\Http\Controllers\AcademicPeriodController::class, 'update'])->name('academic-periods.update');
     Route::delete('/academic-periods/{academicPeriod}', [\App\Http\Controllers\AcademicPeriodController::class, 'destroy'])->name('academic-periods.destroy');
 
     // Global Topics Bank
     Route::get('/topics', [TopicController::class, 'index'])->name('topics.index');
     Route::post('/topics', [TopicController::class, 'store'])->name('topics.store');
+    Route::put('/topics/{topic}', [TopicController::class, 'update'])->name('topics.update');
+    Route::delete('/topics/{topic}', [TopicController::class, 'destroy'])->name('topics.destroy');
 
     // Dynamic Class Sessions & Topic Suggestion
     Route::get('/courses/{course}/sessions/create', [ClassSessionController::class, 'create'])->name('courses.sessions.create');

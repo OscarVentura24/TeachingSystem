@@ -1,6 +1,17 @@
 import React, { useState } from 'react';
-import { Head, Link, useForm } from '@inertiajs/react';
-import { Plus, GraduationCap, Users, BookOpen, Clock, ArrowRight, Calendar, Building2 } from 'lucide-react';
+import { Head, Link, useForm, router } from '@inertiajs/react';
+import {
+    Plus,
+    GraduationCap,
+    Users,
+    BookOpen,
+    Clock,
+    ArrowRight,
+    Calendar,
+    Building2,
+    Pencil,
+    Trash2,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,6 +45,7 @@ interface CourseItem {
     status: string;
     institution: Institution;
     academic_period?: AcademicPeriod;
+    academic_period_id?: number;
     students_count: number;
     course_topics_count: number;
     sessions_count: number;
@@ -48,16 +60,26 @@ interface Props {
 
 export default function CoursesIndex({ courses, institutions, academicPeriods, activeInstitution }: Props) {
     const [openDialog, setOpenDialog] = useState(false);
+    const [openEditDialog, setOpenEditDialog] = useState(false);
+    const [editingCourse, setEditingCourse] = useState<CourseItem | null>(null);
     const [openPeriodDialog, setOpenPeriodDialog] = useState(false);
 
     const defaultInstId = activeInstitution?.id || institutions[0]?.id || '';
 
-    const { data, setData, post, processing, errors, reset } = useForm({
+    const createForm = useForm({
         name: '',
         section: '',
         code: '',
         institution_id: defaultInstId,
         academic_period_id: academicPeriods[0]?.id || '',
+        description: '',
+    });
+
+    const editForm = useForm({
+        name: '',
+        section: '',
+        code: '',
+        academic_period_id: '' as string | number,
         description: '',
     });
 
@@ -69,14 +91,49 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
         is_current: true,
     });
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleCreateSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        post('/courses', {
+        createForm.post('/courses', {
             onSuccess: () => {
                 setOpenDialog(false);
-                reset();
+                createForm.reset();
             },
         });
+    };
+
+    const handleStartEditCourse = (course: CourseItem) => {
+        setEditingCourse(course);
+        editForm.setData({
+            name: course.name,
+            section: course.section || '',
+            code: course.code || '',
+            academic_period_id: course.academic_period?.id || course.academic_period_id || '',
+            description: course.description || '',
+        });
+        setOpenEditDialog(true);
+    };
+
+    const handleEditSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingCourse) return;
+
+        editForm.put(`/courses/${editingCourse.id}`, {
+            onSuccess: () => {
+                setOpenEditDialog(false);
+                setEditingCourse(null);
+                editForm.reset();
+            },
+        });
+    };
+
+    const handleDeleteCourse = (course: CourseItem) => {
+        if (
+            confirm(
+                `¿Estás seguro de eliminar el curso "${course.name}"?\n\nEsta acción eliminará el curso, su pensum y las sesiones registradas de forma irreversible.`
+            )
+        ) {
+            router.delete(`/courses/${course.id}`);
+        }
     };
 
     const handleCreatePeriodSubmit = (e: React.FormEvent) => {
@@ -212,6 +269,7 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
                             </DialogContent>
                         </Dialog>
 
+                        {/* Create Course Dialog */}
                         <Dialog open={openDialog} onOpenChange={setOpenDialog}>
                             <DialogTrigger asChild>
                                 <Button className="gap-2">
@@ -226,17 +284,17 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
                                     </DialogDescription>
                                 </DialogHeader>
 
-                                <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+                                <form onSubmit={handleCreateSubmit} className="space-y-4 pt-2">
                                     <div className="space-y-1.5">
                                         <Label htmlFor="name">Nombre del Curso *</Label>
                                         <Input
                                             id="name"
                                             placeholder="Ej: Programación I"
-                                            value={data.name}
-                                            onChange={(e) => setData('name', e.target.value)}
+                                            value={createForm.data.name}
+                                            onChange={(e) => createForm.setData('name', e.target.value)}
                                             required
                                         />
-                                        {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
+                                        {createForm.errors.name && <p className="text-xs text-destructive">{createForm.errors.name}</p>}
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-3">
@@ -245,8 +303,8 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
                                             <Input
                                                 id="section"
                                                 placeholder="Ej: Sección A"
-                                                value={data.section}
-                                                onChange={(e) => setData('section', e.target.value)}
+                                                value={createForm.data.section}
+                                                onChange={(e) => createForm.setData('section', e.target.value)}
                                             />
                                         </div>
                                         <div className="space-y-1.5">
@@ -254,8 +312,8 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
                                             <Input
                                                 id="code"
                                                 placeholder="Ej: PROG-101"
-                                                value={data.code}
-                                                onChange={(e) => setData('code', e.target.value)}
+                                                value={createForm.data.code}
+                                                onChange={(e) => createForm.setData('code', e.target.value)}
                                             />
                                         </div>
                                     </div>
@@ -274,13 +332,13 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
                                             <Label>Institución *</Label>
                                             <SearchableSelect
                                                 options={institutionOptions}
-                                                value={data.institution_id}
-                                                onChange={(val) => setData('institution_id', val)}
+                                                value={createForm.data.institution_id}
+                                                onChange={(val) => createForm.setData('institution_id', val)}
                                                 placeholder="Buscar institución..."
                                                 required
                                             />
-                                            {errors.institution_id && (
-                                                <p className="text-xs text-destructive">{errors.institution_id}</p>
+                                            {createForm.errors.institution_id && (
+                                                <p className="text-xs text-destructive">{createForm.errors.institution_id}</p>
                                             )}
                                         </div>
                                     )}
@@ -299,8 +357,8 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
                                         </div>
                                         <SearchableSelect
                                             options={periodOptions}
-                                            value={data.academic_period_id}
-                                            onChange={(val) => setData('academic_period_id', val)}
+                                            value={createForm.data.academic_period_id}
+                                            onChange={(val) => createForm.setData('academic_period_id', val)}
                                             placeholder="Buscar período académico..."
                                         />
                                     </div>
@@ -310,8 +368,8 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
                                         <Input
                                             id="description"
                                             placeholder="Breve resumen del curso"
-                                            value={data.description}
-                                            onChange={(e) => setData('description', e.target.value)}
+                                            value={createForm.data.description}
+                                            onChange={(e) => createForm.setData('description', e.target.value)}
                                         />
                                     </div>
 
@@ -323,8 +381,89 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
                                         >
                                             Cancelar
                                         </Button>
-                                        <Button type="submit" disabled={processing}>
+                                        <Button type="submit" disabled={createForm.processing}>
                                             Guardar Curso
+                                        </Button>
+                                    </div>
+                                </form>
+                            </DialogContent>
+                        </Dialog>
+
+                        {/* Edit Course Dialog */}
+                        <Dialog open={openEditDialog} onOpenChange={setOpenEditDialog}>
+                            <DialogContent className="sm:max-w-md">
+                                <DialogHeader>
+                                    <DialogTitle>Editar Curso</DialogTitle>
+                                    <DialogDescription>
+                                        Modifica el nombre, sección, código o período del curso.
+                                    </DialogDescription>
+                                </DialogHeader>
+
+                                <form onSubmit={handleEditSubmit} className="space-y-4 pt-2">
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="edit_course_name">Nombre del Curso *</Label>
+                                        <Input
+                                            id="edit_course_name"
+                                            value={editForm.data.name}
+                                            onChange={(e) => editForm.setData('name', e.target.value)}
+                                            required
+                                        />
+                                        {editForm.errors.name && (
+                                            <p className="text-xs text-destructive">{editForm.errors.name}</p>
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="edit_course_section">Sección / Turno</Label>
+                                            <Input
+                                                id="edit_course_section"
+                                                value={editForm.data.section}
+                                                onChange={(e) => editForm.setData('section', e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="edit_course_code">Código Asignatura</Label>
+                                            <Input
+                                                id="edit_course_code"
+                                                value={editForm.data.code}
+                                                onChange={(e) => editForm.setData('code', e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <Label>Período Académico</Label>
+                                        <SearchableSelect
+                                            options={periodOptions}
+                                            value={editForm.data.academic_period_id}
+                                            onChange={(val) => editForm.setData('academic_period_id', val)}
+                                            placeholder="Buscar período académico..."
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="edit_course_description">Descripción / Observaciones</Label>
+                                        <Input
+                                            id="edit_course_description"
+                                            value={editForm.data.description}
+                                            onChange={(e) => editForm.setData('description', e.target.value)}
+                                        />
+                                    </div>
+
+                                    <div className="flex justify-end gap-2 pt-2">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => {
+                                                setOpenEditDialog(false);
+                                                setEditingCourse(null);
+                                            }}
+                                        >
+                                            Cancelar
+                                        </Button>
+                                        <Button type="submit" disabled={editForm.processing}>
+                                            {editForm.processing ? 'Actualizando...' : 'Guardar Cambios'}
                                         </Button>
                                     </div>
                                 </form>
@@ -352,15 +491,40 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
                                 className="group relative flex flex-col justify-between rounded-xl border bg-card p-6 shadow-sm hover:shadow-md transition-all"
                             >
                                 <div>
-                                    <div className="flex items-center justify-between gap-2">
-                                        <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                                            {course.institution?.name}
-                                        </span>
-                                        {course.academic_period && (
-                                            <span className="text-xs text-muted-foreground">
-                                                {course.academic_period.name}
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                                                {course.institution?.name}
                                             </span>
-                                        )}
+                                            {course.academic_period && (
+                                                <span className="text-xs text-muted-foreground">
+                                                    • {course.academic_period.name}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                                                onClick={() => handleStartEditCourse(course)}
+                                                title="Editar Curso"
+                                            >
+                                                <Pencil className="h-3.5 w-3.5" />
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                                onClick={() => handleDeleteCourse(course)}
+                                                title="Eliminar Curso"
+                                            >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </div>
                                     </div>
 
                                     <h2 className="mt-3 text-lg font-bold text-foreground group-hover:text-primary transition-colors">

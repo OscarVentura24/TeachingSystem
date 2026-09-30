@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\AcademicPeriod;
 use App\Models\Course;
 use App\Models\CourseTopic;
+use App\Models\Enrollment;
 use App\Models\Institution;
+use App\Models\Student;
 use App\Models\StudentTopicProgress;
 use App\Models\Topic;
 use App\Models\User;
@@ -234,5 +236,76 @@ class CourseController extends Controller
         $course->teachers()->detach($user->id);
 
         return back()->with('success', 'Docente desvinculado del curso.');
+    }
+
+    /**
+     * Update the specified course.
+     */
+    public function update(Request $request, Course $course): RedirectResponse
+    {
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para editar este curso.');
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'section' => ['nullable', 'string', 'max:50'],
+            'code' => ['nullable', 'string', 'max:50'],
+            'academic_period_id' => ['nullable', 'exists:academic_periods,id'],
+            'description' => ['nullable', 'string'],
+            'color' => ['nullable', 'string', 'max:20'],
+        ]);
+
+        $course->update($validated);
+
+        return back()->with('success', 'Curso actualizado exitosamente.');
+    }
+
+    /**
+     * Remove the specified course.
+     */
+    public function destroy(Request $request, Course $course): RedirectResponse
+    {
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para eliminar este curso.');
+        }
+
+        $course->delete();
+
+        return redirect()->route('courses.index')->with('success', 'Curso eliminado exitosamente.');
+    }
+
+    /**
+     * Remove a topic from the course pensum.
+     */
+    public function removeTopic(Request $request, Course $course, CourseTopic $courseTopic): RedirectResponse
+    {
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para modificar el pensum de este curso.');
+        }
+
+        if ($courseTopic->course_id !== $course->id) {
+            abort(404);
+        }
+
+        $courseTopic->delete();
+
+        return back()->with('success', 'Tema retirado del pensum.');
+    }
+
+    /**
+     * Remove a student enrollment from the course.
+     */
+    public function removeStudent(Request $request, Course $course, Student $student): RedirectResponse
+    {
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para gestionar estudiantes en este curso.');
+        }
+
+        Enrollment::where('course_id', $course->id)
+            ->where('student_id', $student->id)
+            ->delete();
+
+        return back()->with('success', 'Estudiante desmatriculado del curso.');
     }
 }

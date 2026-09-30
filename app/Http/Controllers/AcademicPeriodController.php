@@ -38,6 +38,29 @@ class AcademicPeriodController extends Controller
     }
 
     /**
+     * Update the specified academic period.
+     */
+    public function update(Request $request, AcademicPeriod $academicPeriod): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:100'],
+            'start_date' => ['nullable', 'date'],
+            'end_date' => ['nullable', 'date'],
+            'is_current' => ['nullable', 'boolean'],
+        ]);
+
+        if (! empty($validated['is_current'])) {
+            AcademicPeriod::where('institution_id', $academicPeriod->institution_id)
+                ->where('id', '!=', $academicPeriod->id)
+                ->update(['is_current' => false]);
+        }
+
+        $academicPeriod->update($validated);
+
+        return back()->with('success', 'Período académico actualizado exitosamente.');
+    }
+
+    /**
      * Remove the specified academic period.
      */
     public function destroy(AcademicPeriod $academicPeriod): RedirectResponse
