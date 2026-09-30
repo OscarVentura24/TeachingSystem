@@ -1,0 +1,439 @@
+import React, { useState, useEffect } from 'react';
+import { Head, Link, useForm } from '@inertiajs/react';
+import {
+    ArrowLeft,
+    CheckCircle2,
+    Computer,
+    Sparkles,
+    AlertCircle,
+    BookOpen,
+    Users,
+    Save,
+    Play,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+
+interface Student {
+    id: number;
+    first_name: string;
+    last_name: string;
+    student_id_number?: string;
+    preferred_workstation?: string;
+}
+
+interface CourseTopic {
+    id: number;
+    title: string;
+    unit_title?: string;
+    sort_order: number;
+}
+
+interface Course {
+    id: number;
+    name: string;
+    section?: string;
+    institution: { id: number; name: string };
+}
+
+interface SuggestionResult {
+    status: string;
+    present_students_count: number;
+    primary_recommendation: {
+        action_type: string;
+        course_topic_id: number | null;
+        title: string;
+        rationale: string;
+        ready_and_pending_count?: number;
+        already_covered_count?: number;
+        missing_prerequisites_count?: number;
+    } | null;
+}
+
+interface Props {
+    course: Course;
+    students: Student[];
+    courseTopics: CourseTopic[];
+}
+
+export default function SessionCreate({ course, students, courseTopics }: Props) {
+    const today = new Date().toISOString().split('T')[0];
+
+    const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
+    const [workstations, setWorkstations] = useState<Record<number, string>>({});
+    const [selectedTopicIds, setSelectedTopicIds] = useState<number[]>([]);
+    const [suggestion, setSuggestion] = useState<SuggestionResult | null>(null);
+    const [loadingSuggestion, setLoadingSuggestion] = useState(false);
+
+    // Initialize workstations from preferred_workstation
+    useEffect(() => {
+        const initialWorkstations: Record<number, string> = {};
+        students.forEach((s) => {
+            if (s.preferred_workstation) {
+                initialWorkstations[s.id] = s.preferred_workstation;
+            }
+        });
+        setWorkstations(initialWorkstations);
+    }, [students]);
+
+    // Live suggestion fetch when selectedStudentIds changes
+    useEffect(() => {
+        if (selectedStudentIds.length === 0) {
+            setSuggestion(null);
+            return;
+        }
+
+        const controller = new AbortController();
+        setLoadingSuggestion(true);
+
+        fetch(`/courses/${course.id}/sessions/suggest`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+            },
+            body: JSON.stringify({ student_ids: selectedStudentIds }),
+            signal: controller.signal,
+        })
+            .then((res) => res.json())
+            .then((data) => {
+                setSuggestion(data);
+                setLoadingSuggestion(false);
+            })
+            .catch((err) => {
+                if (err.name !== 'AbortError') {
+                    setLoadingSuggestion(false);
+                }
+            });
+
+        return () => controller.abort();
+    }, [selectedStudentIds, course.id]);
+
+    const { data, setData, post, processing, errors } = useForm({
+        session_date: today,
+        title: '',
+        notes: '',
+        status: 'completed',
+        topic_ids: [] as number[],
+        attendances: [] as Array<{ student_id: number; workstation?: string }>,
+    });
+
+    const toggleStudent = (id: number) => {
+        setSelectedStudentIds((prev) =>
+            prev.includes(id) ? prev.filter((sId) => sId !== id) : [...prev, id]
+        );
+    };
+
+    const selectAllStudents = () => {
+        setSelectedStudentIds(students.map((s) => s.id));
+    };
+
+    const clearStudents = () => {
+        setSelectedStudentIds([]);
+    };
+
+    const toggleTopic = (id: number) => {
+        setSelectedTopicIds((prev) =>
+            prev.includes(id) ? prev.filter((tId) => tId !== id) : [...prev, id]
+        );
+    };
+
+    const applySuggestedTopic = () => {
+        if (suggestion?.primary_recommendation?.course_topic_id) {
+            const topicId = suggestion.primary_recommendation.course_topic_id;
+            if (!selectedTopicIds.includes(topicId)) {
+                setSelectedTopicIds([topicId]);
+            }
+        }
+    };
+
+    const handleSaveSession = (status: 'draft' | 'completed') => {
+        const attendances = selectedStudentIds.map((sId) => ({
+            student_id: sId,
+            workstation: workstations[sId] || undefined,
+        }));
+
+        setData({
+            ...data,
+            status,
+            topic_ids: selectedTopicIds,
+            attendances,
+        });
+
+        // Trigger post with updated payload
+        post(`/courses/${course.id}/sessions`);
+    };
+
+    return (
+        <>
+            <Head title={`Nueva Sesión - ${course.name}`} />
+
+            <div className="flex flex-1 flex-col gap-6 p-6 max-w-5xl mx-auto w-full">
+                {/* Header */}
+                <div className="flex items-center justify-between border-b pb-4">
+                    <div className="flex items-center gap-3">
+                        <Link href={`/courses/${course.id}`} className="text-muted-foreground hover:text-foreground">
+                            <ArrowLeft className="h-5 w-5" />
+                        </Link>
+                        <div>
+                            <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">
+                                {course.institution?.name}
+                            </span>
+                            <h1 className="text-xl font-bold text-foreground">
+                                Iniciar Sesión de Clase — {course.name}
+                            </h1>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Session Meta */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-card border p-4 rounded-xl shadow-sm">
+                    <div className="space-y-1.5">
+                        <Label htmlFor="session_date">Fecha de la Sesión *</Label>
+                        <Input
+                            id="session_date"
+                            type="date"
+                            value={data.session_date}
+                            onChange={(e) => setData('session_date', e.target.value)}
+                            required
+                        />
+                    </div>
+                    <div className="space-y-1.5 sm:col-span-2">
+                        <Label htmlFor="session_title">Título / Objetivo de la Clase</Label>
+                        <Input
+                            id="session_title"
+                            placeholder="Ej: Práctica en laboratorio de computación"
+                            value={data.title}
+                            onChange={(e) => setData('title', e.target.value)}
+                        />
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* Left Column: Student Selection & Workstations (7 cols) */}
+                    <div className="lg:col-span-7 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Users className="h-4 w-4 text-primary" />
+                                <h3 className="font-semibold text-sm text-foreground">
+                                    Alumnos en el Laboratorio ({selectedStudentIds.length}/{students.length})
+                                </h3>
+                            </div>
+                            <div className="flex gap-2">
+                                <Button size="sm" variant="ghost" onClick={selectAllStudents} className="text-xs h-7">
+                                    Todos
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={clearStudents} className="text-xs h-7 text-muted-foreground">
+                                    Limpiar
+                                </Button>
+                            </div>
+                        </div>
+
+                        {students.length === 0 ? (
+                            <div className="rounded-xl border border-dashed p-6 text-center text-muted-foreground text-xs">
+                                No hay estudiantes matriculados en este curso.
+                            </div>
+                        ) : (
+                            <div className="divide-y rounded-xl border bg-card max-h-[460px] overflow-y-auto">
+                                {students.map((student) => {
+                                    const isSelected = selectedStudentIds.includes(student.id);
+
+                                    return (
+                                        <div
+                                            key={student.id}
+                                            className={`flex items-center justify-between p-3 transition-colors ${
+                                                isSelected ? 'bg-primary/5' : 'hover:bg-muted/30'
+                                            }`}
+                                        >
+                                            <label className="flex items-center gap-3 cursor-pointer flex-1">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => toggleStudent(student.id)}
+                                                    className="h-4 w-4 rounded text-primary border-muted-foreground"
+                                                />
+                                                <div>
+                                                    <span className="text-xs font-semibold text-foreground block">
+                                                        {student.last_name}, {student.first_name}
+                                                    </span>
+                                                    {student.student_id_number && (
+                                                        <span className="text-[10px] text-muted-foreground font-mono">
+                                                            {student.student_id_number}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </label>
+
+                                            {isSelected && (
+                                                <div className="flex items-center gap-1.5 pl-2">
+                                                    <Computer className="h-3.5 w-3.5 text-muted-foreground" />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Puesto/PC"
+                                                        value={workstations[student.id] || ''}
+                                                        onChange={(e) =>
+                                                            setWorkstations({
+                                                                ...workstations,
+                                                                [student.id]: e.target.value,
+                                                            })
+                                                        }
+                                                        className="w-20 px-2 py-1 text-[11px] font-mono border rounded bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Right Column: Live Suggestion & Topic Selection (5 cols) */}
+                    <div className="lg:col-span-5 space-y-5">
+                        {/* Live Topic Suggestion Box */}
+                        <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                                    <Sparkles className="h-4 w-4" /> Sugerencia Determinista
+                                </span>
+                                {loadingSuggestion && (
+                                    <span className="text-[10px] text-muted-foreground animate-pulse">
+                                        Analizando grupo...
+                                    </span>
+                                )}
+                            </div>
+
+                            {selectedStudentIds.length === 0 ? (
+                                <p className="text-xs text-muted-foreground">
+                                    Selecciona los estudiantes presentes en el aula o laboratorio para obtener la recomendación pedagógica en tiempo real.
+                                </p>
+                            ) : suggestion?.primary_recommendation ? (
+                                <div className="space-y-2.5">
+                                    <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <h4 className="text-xs font-bold text-foreground">
+                                                {suggestion.primary_recommendation.title}
+                                            </h4>
+                                            <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-primary text-primary-foreground">
+                                                {suggestion.primary_recommendation.action_type === 'advance'
+                                                    ? 'Avanzar'
+                                                    : suggestion.primary_recommendation.action_type === 'review_leveling'
+                                                    ? 'Nivelación'
+                                                    : 'Inicio'}
+                                            </span>
+                                        </div>
+                                        <p className="text-[11px] text-muted-foreground mt-1.5">
+                                            {suggestion.primary_recommendation.rationale}
+                                        </p>
+                                    </div>
+
+                                    {suggestion.primary_recommendation.course_topic_id && (
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="secondary"
+                                            className="w-full text-xs gap-1.5"
+                                            onClick={applySuggestedTopic}
+                                        >
+                                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                                            Seleccionar este tema para la sesión
+                                        </Button>
+                                    )}
+                                </div>
+                            ) : (
+                                <p className="text-xs text-muted-foreground">
+                                    No hay sugerencias disponibles para la selección actual.
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Topics Selection */}
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                                <BookOpen className="h-4 w-4 text-primary" />
+                                <h3 className="font-semibold text-sm text-foreground">
+                                    Temas a Explicar ({selectedTopicIds.length})
+                                </h3>
+                            </div>
+
+                            {courseTopics.length === 0 ? (
+                                <div className="rounded-xl border border-dashed p-6 text-center text-muted-foreground text-xs">
+                                    El pensum no tiene temas configurados.
+                                </div>
+                            ) : (
+                                <div className="divide-y rounded-xl border bg-card max-h-[300px] overflow-y-auto">
+                                    {courseTopics.map((topic, index) => {
+                                        const isSelected = selectedTopicIds.includes(topic.id);
+
+                                        return (
+                                            <label
+                                                key={topic.id}
+                                                className={`flex items-start gap-3 p-3 cursor-pointer transition-colors ${
+                                                    isSelected ? 'bg-primary/5' : 'hover:bg-muted/30'
+                                                }`}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => toggleTopic(topic.id)}
+                                                    className="mt-0.5 h-4 w-4 rounded text-primary border-muted-foreground"
+                                                />
+                                                <div>
+                                                    <span className="text-xs font-semibold text-foreground block">
+                                                        {index + 1}. {topic.title}
+                                                    </span>
+                                                    {topic.unit_title && (
+                                                        <span className="text-[10px] text-muted-foreground block">
+                                                            {topic.unit_title}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="pt-2 space-y-2">
+                            <Button
+                                type="button"
+                                className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                                disabled={selectedStudentIds.length === 0 || selectedTopicIds.length === 0 || processing}
+                                onClick={() => handleSaveSession('completed')}
+                            >
+                                <Play className="h-4 w-4 fill-white" /> Completar y Acreditar Sesión
+                            </Button>
+
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="w-full gap-2 text-xs"
+                                disabled={selectedStudentIds.length === 0 || selectedTopicIds.length === 0 || processing}
+                                onClick={() => handleSaveSession('draft')}
+                            >
+                                <Save className="h-3.5 w-3.5" /> Guardar como Borrador
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </>
+    );
+}
+
+SessionCreate.layout = {
+    breadcrumbs: [
+        {
+            title: 'Cursos',
+            href: '/courses',
+        },
+        {
+            title: 'Nueva Sesión',
+            href: '',
+        },
+    ],
+};
