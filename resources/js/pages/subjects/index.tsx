@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Head, useForm } from '@inertiajs/react';
-import { Plus, BookMarked, Layers, Search } from 'lucide-react';
+import { Head, useForm, router } from '@inertiajs/react';
+import { Plus, BookMarked, Layers, Search, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,10 +26,17 @@ interface Props {
 }
 
 export default function SubjectsIndex({ subjects }: Props) {
-    const [openDialog, setOpenDialog] = useState(false);
+    const [openCreateDialog, setOpenCreateDialog] = useState(false);
+    const [editingSubject, setEditingSubject] = useState<SubjectItem | null>(null);
     const [search, setSearch] = useState('');
 
-    const { data, setData, post, processing, errors, reset } = useForm({
+    const createForm = useForm({
+        name: '',
+        code: '',
+        description: '',
+    });
+
+    const editForm = useForm({
         name: '',
         code: '',
         description: '',
@@ -44,14 +51,45 @@ export default function SubjectsIndex({ subjects }: Props) {
         );
     });
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleCreateSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        post('/subjects', {
+        createForm.post('/subjects', {
             onSuccess: () => {
-                setOpenDialog(false);
-                reset();
+                setOpenCreateDialog(false);
+                createForm.reset();
             },
         });
+    };
+
+    const handleStartEdit = (subject: SubjectItem) => {
+        setEditingSubject(subject);
+        editForm.setData({
+            name: subject.name,
+            code: subject.code || '',
+            description: subject.description || '',
+        });
+    };
+
+    const handleEditSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingSubject) return;
+
+        editForm.put(`/subjects/${editingSubject.id}`, {
+            onSuccess: () => {
+                setEditingSubject(null);
+                editForm.reset();
+            },
+        });
+    };
+
+    const handleDelete = (subject: SubjectItem) => {
+        if (
+            confirm(
+                `¿Estás seguro de eliminar la asignatura "${subject.name}"? Los temas asociados conservarán sus datos y quedarán sin asignatura asignada.`
+            )
+        ) {
+            router.delete(`/subjects/${subject.id}`);
+        }
     };
 
     return (
@@ -67,7 +105,7 @@ export default function SubjectsIndex({ subjects }: Props) {
                         </p>
                     </div>
 
-                    <Dialog open={openDialog} onOpenChange={setOpenDialog}>
+                    <Dialog open={openCreateDialog} onOpenChange={setOpenCreateDialog}>
                         <DialogTrigger asChild>
                             <Button className="gap-2">
                                 <Plus className="h-4 w-4" /> Nueva Asignatura
@@ -81,44 +119,46 @@ export default function SubjectsIndex({ subjects }: Props) {
                                 </DialogDescription>
                             </DialogHeader>
 
-                            <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+                            <form onSubmit={handleCreateSubmit} className="space-y-4 pt-2">
                                 <div className="space-y-1.5">
-                                    <Label htmlFor="name">Nombre de la Asignatura *</Label>
+                                    <Label htmlFor="create_name">Nombre de la Asignatura *</Label>
                                     <Input
-                                        id="name"
+                                        id="create_name"
                                         placeholder="Ej: Programación Web"
-                                        value={data.name}
-                                        onChange={(e) => setData('name', e.target.value)}
+                                        value={createForm.data.name}
+                                        onChange={(e) => createForm.setData('name', e.target.value)}
                                         required
                                     />
-                                    {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
+                                    {createForm.errors.name && (
+                                        <p className="text-xs text-destructive">{createForm.errors.name}</p>
+                                    )}
                                 </div>
 
                                 <div className="space-y-1.5">
-                                    <Label htmlFor="code">Código de Materia</Label>
+                                    <Label htmlFor="create_code">Código de Materia</Label>
                                     <Input
-                                        id="code"
+                                        id="create_code"
                                         placeholder="Ej: PW-101"
-                                        value={data.code}
-                                        onChange={(e) => setData('code', e.target.value)}
+                                        value={createForm.data.code}
+                                        onChange={(e) => createForm.setData('code', e.target.value)}
                                     />
                                 </div>
 
                                 <div className="space-y-1.5">
-                                    <Label htmlFor="description">Descripción / Alcance</Label>
+                                    <Label htmlFor="create_description">Descripción / Alcance</Label>
                                     <Input
-                                        id="description"
+                                        id="create_description"
                                         placeholder="Breve resumen de la asignatura"
-                                        value={data.description}
-                                        onChange={(e) => setData('description', e.target.value)}
+                                        value={createForm.data.description}
+                                        onChange={(e) => createForm.setData('description', e.target.value)}
                                     />
                                 </div>
 
                                 <div className="flex justify-end gap-2 pt-2">
-                                    <Button type="button" variant="outline" onClick={() => setOpenDialog(false)}>
+                                    <Button type="button" variant="outline" onClick={() => setOpenCreateDialog(false)}>
                                         Cancelar
                                     </Button>
-                                    <Button type="submit" disabled={processing}>
+                                    <Button type="submit" disabled={createForm.processing}>
                                         Guardar Asignatura
                                     </Button>
                                 </div>
@@ -126,6 +166,60 @@ export default function SubjectsIndex({ subjects }: Props) {
                         </DialogContent>
                     </Dialog>
                 </div>
+
+                {/* Edit Subject Dialog */}
+                <Dialog open={editingSubject !== null} onOpenChange={(open) => !open && setEditingSubject(null)}>
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>Editar Asignatura</DialogTitle>
+                            <DialogDescription>
+                                Modifica el nombre, código o descripción de la asignatura.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <form onSubmit={handleEditSubmit} className="space-y-4 pt-2">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="edit_name">Nombre de la Asignatura *</Label>
+                                <Input
+                                    id="edit_name"
+                                    value={editForm.data.name}
+                                    onChange={(e) => editForm.setData('name', e.target.value)}
+                                    required
+                                />
+                                {editForm.errors.name && (
+                                    <p className="text-xs text-destructive">{editForm.errors.name}</p>
+                                )}
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label htmlFor="edit_code">Código de Materia</Label>
+                                <Input
+                                    id="edit_code"
+                                    value={editForm.data.code}
+                                    onChange={(e) => editForm.setData('code', e.target.value)}
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label htmlFor="edit_description">Descripción</Label>
+                                <Input
+                                    id="edit_description"
+                                    value={editForm.data.description}
+                                    onChange={(e) => editForm.setData('description', e.target.value)}
+                                />
+                            </div>
+
+                            <div className="flex justify-end gap-2 pt-2">
+                                <Button type="button" variant="outline" onClick={() => setEditingSubject(null)}>
+                                    Cancelar
+                                </Button>
+                                <Button type="submit" disabled={editForm.processing}>
+                                    Actualizar
+                                </Button>
+                            </div>
+                        </form>
+                    </DialogContent>
+                </Dialog>
 
                 {/* Search Bar */}
                 <div className="relative max-w-sm">
@@ -141,9 +235,9 @@ export default function SubjectsIndex({ subjects }: Props) {
                 {filteredSubjects.length === 0 ? (
                     <div className="rounded-xl border border-dashed p-12 text-center text-muted-foreground">
                         <BookMarked className="mx-auto h-10 w-10 text-muted-foreground/40 mb-2" />
-                        <p className="font-medium">No hay asignaturas registradas todavía.</p>
-                        <p className="text-xs mt-1">Crea tu primera asignatura para organizar los temas de tus cursos.</p>
-                        <Button size="sm" variant="outline" className="mt-4 gap-2" onClick={() => setOpenDialog(true)}>
+                        <p className="font-medium">No se encontraron asignaturas.</p>
+                        <p className="text-xs mt-1">Crea una nueva asignatura para organizar tus temas didácticos.</p>
+                        <Button size="sm" variant="outline" className="mt-4 gap-2" onClick={() => setOpenCreateDialog(true)}>
                             <Plus className="h-4 w-4" /> Crear Asignatura
                         </Button>
                     </div>
@@ -152,15 +246,15 @@ export default function SubjectsIndex({ subjects }: Props) {
                         {filteredSubjects.map((subject) => (
                             <div
                                 key={subject.id}
-                                className="flex flex-col justify-between rounded-xl border bg-card p-5 shadow-sm hover:border-primary/40 transition-colors"
+                                className="group relative flex flex-col justify-between rounded-xl border bg-card p-5 shadow-sm hover:border-primary/40 transition-colors"
                             >
                                 <div>
-                                    <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-start justify-between gap-2">
                                         <h3 className="text-base font-semibold text-foreground">
                                             {subject.name}
                                         </h3>
                                         {subject.code && (
-                                            <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                                            <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
                                                 {subject.code}
                                             </span>
                                         )}
@@ -177,6 +271,31 @@ export default function SubjectsIndex({ subjects }: Props) {
                                     <span className="flex items-center gap-1.5">
                                         <Layers className="h-3.5 w-3.5 text-primary" /> {subject.topics_count} tema(s) en el banco
                                     </span>
+
+                                    {/* Action Buttons (Edit & Delete) */}
+                                    <div className="flex items-center gap-1">
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                                            onClick={() => handleStartEdit(subject)}
+                                            title="Editar Asignatura"
+                                        >
+                                            <Pencil className="h-3.5 w-3.5" />
+                                        </Button>
+
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                            onClick={() => handleDelete(subject)}
+                                            title="Eliminar Asignatura"
+                                        >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
                         ))}

@@ -22,6 +22,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 interface SubjectItem {
     id: number;
@@ -185,27 +186,24 @@ export default function TopicsIndex({ topics, subjects, areas }: Props) {
                                             </div>
 
                                             {subjects.length > 0 ? (
-                                                <select
-                                                    id="subject_id"
+                                                <SearchableSelect
+                                                    options={subjects.map((sub) => ({
+                                                        value: sub.id,
+                                                        label: sub.name,
+                                                        subLabel: sub.code,
+                                                    }))}
                                                     value={data.subject_id}
-                                                    onChange={(e) => {
-                                                        const sId = e.target.value;
+                                                    onChange={(sId) => {
                                                         setData('subject_id', sId);
                                                         const found = subjects.find((s) => s.id === Number(sId));
                                                         if (found) {
                                                             setData('area', found.name);
                                                         }
                                                     }}
-                                                    className="w-full bg-background border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                                    placeholder="Buscar asignatura..."
+                                                    searchPlaceholder="Buscar por nombre o código..."
                                                     required
-                                                >
-                                                    <option value="">-- Seleccionar Asignatura --</option>
-                                                    {subjects.map((sub) => (
-                                                        <option key={sub.id} value={sub.id}>
-                                                            {sub.name} {sub.code ? `(${sub.code})` : ''}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                />
                                             ) : (
                                                 <div className="space-y-1">
                                                     <Input

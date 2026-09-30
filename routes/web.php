@@ -27,6 +27,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Subjects (Asignaturas)
     Route::get('/subjects', [SubjectController::class, 'index'])->name('subjects.index');
     Route::post('/subjects', [SubjectController::class, 'store'])->name('subjects.store');
+    Route::put('/subjects/{subject}', [SubjectController::class, 'update'])->name('subjects.update');
+    Route::delete('/subjects/{subject}', [SubjectController::class, 'destroy'])->name('subjects.destroy');
+
+    // Academic Periods (Períodos Académicos)
+    Route::post('/academic-periods', [\App\Http\Controllers\AcademicPeriodController::class, 'store'])->name('academic-periods.store');
+    Route::delete('/academic-periods/{academicPeriod}', [\App\Http\Controllers\AcademicPeriodController::class, 'destroy'])->name('academic-periods.destroy');
 
     // Global Topics Bank
     Route::get('/topics', [TopicController::class, 'index'])->name('topics.index');

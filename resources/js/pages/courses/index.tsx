@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
-import { Plus, GraduationCap, Users, BookOpen, Clock, ArrowRight } from 'lucide-react';
+import { Plus, GraduationCap, Users, BookOpen, Clock, ArrowRight, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import {
     Dialog,
     DialogContent,
@@ -46,6 +47,7 @@ interface Props {
 
 export default function CoursesIndex({ courses, institutions, academicPeriods }: Props) {
     const [openDialog, setOpenDialog] = useState(false);
+    const [openPeriodDialog, setOpenPeriodDialog] = useState(false);
 
     const { data, setData, post, processing, errors, reset } = useForm({
         name: '',
@@ -54,6 +56,14 @@ export default function CoursesIndex({ courses, institutions, academicPeriods }:
         institution_id: institutions[0]?.id || '',
         academic_period_id: academicPeriods[0]?.id || '',
         description: '',
+    });
+
+    const periodForm = useForm({
+        institution_id: institutions[0]?.id || '',
+        name: '',
+        start_date: '',
+        end_date: '',
+        is_current: true,
     });
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -65,6 +75,29 @@ export default function CoursesIndex({ courses, institutions, academicPeriods }:
             },
         });
     };
+
+    const handleCreatePeriodSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        periodForm.post('/academic-periods', {
+            onSuccess: () => {
+                setOpenPeriodDialog(false);
+                periodForm.reset();
+            },
+        });
+    };
+
+    const institutionOptions = institutions.map((inst) => ({
+        value: inst.id,
+        label: inst.name,
+    }));
+
+    const periodOptions = [
+        { value: '', label: 'Sin período específico' },
+        ...academicPeriods.map((p) => ({
+            value: p.id,
+            label: p.name,
+        })),
+    ];
 
     return (
         <>
@@ -78,112 +111,194 @@ export default function CoursesIndex({ courses, institutions, academicPeriods }:
                         </p>
                     </div>
 
-                    <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-                        <DialogTrigger asChild>
-                            <Button className="gap-2">
-                                <Plus className="h-4 w-4" /> Nuevo Curso
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-md">
-                            <DialogHeader>
-                                <DialogTitle>Crear Nuevo Curso</DialogTitle>
-                                <DialogDescription>
-                                    Define la asignatura, sección e institución para comenzar.
-                                </DialogDescription>
-                            </DialogHeader>
+                    <div className="flex items-center gap-2">
+                        {/* Quick create academic period button */}
+                        <Dialog open={openPeriodDialog} onOpenChange={setOpenPeriodDialog}>
+                            <DialogTrigger asChild>
+                                <Button variant="outline" className="gap-2">
+                                    <Calendar className="h-4 w-4" /> Nuevo Período
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-md">
+                                <DialogHeader>
+                                    <DialogTitle>Crear Período Académico</DialogTitle>
+                                    <DialogDescription>
+                                        Define un nuevo ciclo o semestre (ej. 2026-II, Verano 2026).
+                                    </DialogDescription>
+                                </DialogHeader>
 
-                            <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="name">Nombre del Curso *</Label>
-                                    <Input
-                                        id="name"
-                                        placeholder="Ej: Programación I"
-                                        value={data.name}
-                                        onChange={(e) => setData('name', e.target.value)}
-                                        required
-                                    />
-                                    {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-3">
+                                <form onSubmit={handleCreatePeriodSubmit} className="space-y-4 pt-2">
                                     <div className="space-y-1.5">
-                                        <Label htmlFor="section">Sección / Turno</Label>
-                                        <Input
-                                            id="section"
-                                            placeholder="Ej: Sección A"
-                                            value={data.section}
-                                            onChange={(e) => setData('section', e.target.value)}
+                                        <Label htmlFor="period_institution">Institución *</Label>
+                                        <SearchableSelect
+                                            options={institutionOptions}
+                                            value={periodForm.data.institution_id}
+                                            onChange={(val) => periodForm.setData('institution_id', val)}
+                                            placeholder="Seleccionar institución..."
+                                            required
                                         />
                                     </div>
+
                                     <div className="space-y-1.5">
-                                        <Label htmlFor="code">Código Asignatura</Label>
+                                        <Label htmlFor="period_name">Nombre del Período *</Label>
                                         <Input
-                                            id="code"
-                                            placeholder="Ej: PROG-101"
-                                            value={data.code}
-                                            onChange={(e) => setData('code', e.target.value)}
+                                            id="period_name"
+                                            placeholder="Ej: 2026-II o Semestre 2026-B"
+                                            value={periodForm.data.name}
+                                            onChange={(e) => periodForm.setData('name', e.target.value)}
+                                            required
                                         />
+                                        {periodForm.errors.name && (
+                                            <p className="text-xs text-destructive">{periodForm.errors.name}</p>
+                                        )}
                                     </div>
-                                </div>
 
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="institution_id">Institución *</Label>
-                                    <select
-                                        id="institution_id"
-                                        value={data.institution_id}
-                                        onChange={(e) => setData('institution_id', e.target.value)}
-                                        className="w-full bg-background border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                                        required
-                                    >
-                                        {institutions.map((inst) => (
-                                            <option key={inst.id} value={inst.id}>
-                                                {inst.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    {errors.institution_id && <p className="text-xs text-destructive">{errors.institution_id}</p>}
-                                </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="start_date">Fecha Inicio</Label>
+                                            <Input
+                                                id="start_date"
+                                                type="date"
+                                                value={periodForm.data.start_date}
+                                                onChange={(e) => periodForm.setData('start_date', e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="end_date">Fecha Fin</Label>
+                                            <Input
+                                                id="end_date"
+                                                type="date"
+                                                value={periodForm.data.end_date}
+                                                onChange={(e) => periodForm.setData('end_date', e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
 
-                                {academicPeriods.length > 0 && (
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor="academic_period_id">Período Académico</Label>
-                                        <select
-                                            id="academic_period_id"
-                                            value={data.academic_period_id}
-                                            onChange={(e) => setData('academic_period_id', e.target.value)}
-                                            className="w-full bg-background border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                    <div className="flex justify-end gap-2 pt-2">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => setOpenPeriodDialog(false)}
                                         >
-                                            <option value="">Sin período específico</option>
-                                            {academicPeriods.map((period) => (
-                                                <option key={period.id} value={period.id}>
-                                                    {period.name}
-                                                </option>
-                                            ))}
-                                        </select>
+                                            Cancelar
+                                        </Button>
+                                        <Button type="submit" disabled={periodForm.processing}>
+                                            Guardar Período
+                                        </Button>
                                     </div>
-                                )}
+                                </form>
+                            </DialogContent>
+                        </Dialog>
 
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="description">Descripción / Observaciones</Label>
-                                    <Input
-                                        id="description"
-                                        placeholder="Breve resumen del curso"
-                                        value={data.description}
-                                        onChange={(e) => setData('description', e.target.value)}
-                                    />
-                                </div>
+                        <Dialog open={openDialog} onOpenChange={setOpenDialog}>
+                            <DialogTrigger asChild>
+                                <Button className="gap-2">
+                                    <Plus className="h-4 w-4" /> Nuevo Curso
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-md">
+                                <DialogHeader>
+                                    <DialogTitle>Crear Nuevo Curso</DialogTitle>
+                                    <DialogDescription>
+                                        Define la asignatura, sección e institución para comenzar.
+                                    </DialogDescription>
+                                </DialogHeader>
 
-                                <div className="flex justify-end gap-2 pt-2">
-                                    <Button type="button" variant="outline" onClick={() => setOpenDialog(false)}>
-                                        Cancelar
-                                    </Button>
-                                    <Button type="submit" disabled={processing}>
-                                        Guardar Curso
-                                    </Button>
-                                </div>
-                            </form>
-                        </DialogContent>
-                    </Dialog>
+                                <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="name">Nombre del Curso *</Label>
+                                        <Input
+                                            id="name"
+                                            placeholder="Ej: Programación I"
+                                            value={data.name}
+                                            onChange={(e) => setData('name', e.target.value)}
+                                            required
+                                        />
+                                        {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="section">Sección / Turno</Label>
+                                            <Input
+                                                id="section"
+                                                placeholder="Ej: Sección A"
+                                                value={data.section}
+                                                onChange={(e) => setData('section', e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="code">Código Asignatura</Label>
+                                            <Input
+                                                id="code"
+                                                placeholder="Ej: PROG-101"
+                                                value={data.code}
+                                                onChange={(e) => setData('code', e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Institution Searchable Select */}
+                                    <div className="space-y-1.5">
+                                        <Label>Institución *</Label>
+                                        <SearchableSelect
+                                            options={institutionOptions}
+                                            value={data.institution_id}
+                                            onChange={(val) => setData('institution_id', val)}
+                                            placeholder="Buscar institución..."
+                                            required
+                                        />
+                                        {errors.institution_id && (
+                                            <p className="text-xs text-destructive">{errors.institution_id}</p>
+                                        )}
+                                    </div>
+
+                                    {/* Academic Period Searchable Select with quick add */}
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center justify-between">
+                                            <Label>Período Académico</Label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setOpenPeriodDialog(true)}
+                                                className="text-[10px] text-primary hover:underline flex items-center gap-1"
+                                            >
+                                                <Plus className="h-2.5 w-2.5" /> Nuevo Período
+                                            </button>
+                                        </div>
+                                        <SearchableSelect
+                                            options={periodOptions}
+                                            value={data.academic_period_id}
+                                            onChange={(val) => setData('academic_period_id', val)}
+                                            placeholder="Buscar período académico..."
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="description">Descripción / Observaciones</Label>
+                                        <Input
+                                            id="description"
+                                            placeholder="Breve resumen del curso"
+                                            value={data.description}
+                                            onChange={(e) => setData('description', e.target.value)}
+                                        />
+                                    </div>
+
+                                    <div className="flex justify-end gap-2 pt-2">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => setOpenDialog(false)}
+                                        >
+                                            Cancelar
+                                        </Button>
+                                        <Button type="submit" disabled={processing}>
+                                            Guardar Curso
+                                        </Button>
+                                    </div>
+                                </form>
+                            </DialogContent>
+                        </Dialog>
+                    </div>
                 </div>
 
                 {courses.length === 0 ? (

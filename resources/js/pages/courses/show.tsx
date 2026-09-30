@@ -24,6 +24,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 interface CourseTopic {
     id: number;
@@ -96,9 +97,8 @@ export default function CourseShow({ course, progressByStudent, globalTopics }: 
         preferred_workstation: '',
     });
 
-    const handleSelectGlobalTopic = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const topicId = e.target.value;
-        const selected = globalTopics.find((t) => t.id === Number(topicId));
+    const handleSelectGlobalTopic = (topicId: string | number) => {
+        const selected = globalTopics.find((t) => String(t.id) === String(topicId));
         if (selected) {
             addTopicForm.setData({
                 topic_id: String(selected.id),
@@ -257,22 +257,20 @@ export default function CourseShow({ course, progressByStudent, globalTopics }: 
                                     <form onSubmit={handleAddTopicSubmit} className="space-y-4 pt-2">
                                         {globalTopics.length > 0 && (
                                             <div className="space-y-1.5 bg-muted/30 p-3 rounded-lg border">
-                                                <Label htmlFor="global_topic_select" className="text-xs flex items-center gap-1.5">
+                                                <Label className="text-xs flex items-center gap-1.5 mb-1.5">
                                                     <Sparkles className="h-3.5 w-3.5 text-primary" /> Cargar desde Banco Global
                                                 </Label>
-                                                <select
-                                                    id="global_topic_select"
+                                                <SearchableSelect
+                                                    options={globalTopics.map((gt) => ({
+                                                        value: gt.id,
+                                                        label: gt.title,
+                                                        subLabel: `[${gt.area}] ${gt.unit_title ? `• ${gt.unit_title}` : ''}`,
+                                                    }))}
                                                     value={addTopicForm.data.topic_id}
                                                     onChange={handleSelectGlobalTopic}
-                                                    className="w-full bg-background border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                                                >
-                                                    <option value="">-- Seleccionar tema sugerido o personalizado --</option>
-                                                    {globalTopics.map((gt) => (
-                                                        <option key={gt.id} value={gt.id}>
-                                                            [{gt.area}] {gt.title}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                    placeholder="Buscar tema del banco global..."
+                                                    searchPlaceholder="Buscar por título, área o unidad..."
+                                                />
                                             </div>
                                         )}
 
