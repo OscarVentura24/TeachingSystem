@@ -119,6 +119,15 @@ export function InstitutionSwitcher() {
                         <DropdownMenuItem asChild>
                             <Link
                                 href="/institutions"
+                                className="gap-2 text-xs py-2 cursor-pointer font-medium text-primary hover:text-primary"
+                            >
+                                <Plus className="h-3.5 w-3.5" />
+                                <span>+ Nueva Institución</span>
+                            </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                            <Link
+                                href="/institutions"
                                 className="gap-2 text-xs py-2 cursor-pointer text-muted-foreground hover:text-foreground"
                             >
                                 <Settings className="h-3.5 w-3.5" />
