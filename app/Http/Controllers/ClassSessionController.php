@@ -23,8 +23,12 @@ class ClassSessionController extends Controller
     /**
      * Show the form for creating a new class session with live topic suggestion.
      */
-    public function create(Course $course): Response
+    public function create(Request $request, Course $course): Response
     {
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para gestionar sesiones en este curso.');
+        }
+
         $course->load([
             'students' => function ($query) {
                 $query->orderBy('last_name')->orderBy('first_name');
@@ -44,6 +48,10 @@ class ClassSessionController extends Controller
      */
     public function suggestTopic(Request $request, Course $course): JsonResponse
     {
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para gestionar este curso.');
+        }
+
         $request->validate([
             'student_ids' => ['present', 'array'],
             'student_ids.*' => ['integer', 'exists:students,id'],
@@ -61,6 +69,9 @@ class ClassSessionController extends Controller
      */
     public function store(Request $request, Course $course): RedirectResponse
     {
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para gestionar sesiones en este curso.');
+        }
         $validated = $request->validate([
             'session_date' => ['required', 'date'],
             'title' => ['nullable', 'string', 'max:255'],

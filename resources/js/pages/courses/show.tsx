@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm, router } from '@inertiajs/react';
 import {
     ArrowLeft,
     Play,
@@ -11,6 +11,9 @@ import {
     CheckCircle2,
     Computer,
     Sparkles,
+    GraduationCap,
+    Trash2,
+    UserCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -60,6 +63,15 @@ interface GlobalTopic {
     description?: string;
 }
 
+interface Teacher {
+    id: number;
+    name: string;
+    email: string;
+    pivot?: {
+        is_primary: boolean;
+    };
+}
+
 interface Props {
     course: {
         id: number;
@@ -71,15 +83,31 @@ interface Props {
         course_topics: CourseTopic[];
         students: Student[];
         sessions: SessionItem[];
+        teachers: Teacher[];
     };
     progressByStudent: Record<number, any[]>;
     globalTopics: GlobalTopic[];
+    availableTeachers?: Array<{ id: number; name: string; email: string }>;
+    canManageTeachers?: boolean;
 }
 
-export default function CourseShow({ course, progressByStudent, globalTopics }: Props) {
-    const [activeTab, setActiveTab] = useState<'matrix' | 'pensum' | 'students' | 'sessions'>('matrix');
+export default function CourseShow({
+    course,
+    progressByStudent,
+    globalTopics,
+    availableTeachers = [],
+    canManageTeachers = false,
+}: Props) {
+    const [activeTab, setActiveTab] = useState<'matrix' | 'pensum' | 'students' | 'sessions' | 'teachers'>('matrix');
     const [openAddTopicDialog, setOpenAddTopicDialog] = useState(false);
     const [openEnrollDialog, setOpenEnrollDialog] = useState(false);
+    const [openAddTeacherDialog, setOpenAddTeacherDialog] = useState(false);
+
+    // Form to assign teacher to course
+    const addTeacherForm = useForm({
+        user_id: '',
+        is_primary: false,
+    });
 
     // Form to add topic to course pensum
     const addTopicForm = useForm({
@@ -129,6 +157,22 @@ export default function CourseShow({ course, progressByStudent, globalTopics }: 
                 enrollStudentForm.reset();
             },
         });
+    };
+
+    const handleAddTeacherSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        addTeacherForm.post(`/courses/${course.id}/teachers`, {
+            onSuccess: () => {
+                setOpenAddTeacherDialog(false);
+                addTeacherForm.reset();
+            },
+        });
+    };
+
+    const handleRemoveTeacher = (teacherId: number, teacherName: string) => {
+        if (confirm(`¿Desvincular al docente "${teacherName}" de este curso?`)) {
+            router.delete(`/courses/${course.id}/teachers/${teacherId}`);
+        }
     };
 
     return (
@@ -210,6 +254,17 @@ export default function CourseShow({ course, progressByStudent, globalTopics }: 
                         }`}
                     >
                         <History className="h-4 w-4" /> Historial de Sesiones ({course.sessions?.length || 0})
+                    </button>
+
+                    <button
+                        onClick={() => setActiveTab('teachers')}
+                        className={`pb-3 border-b-2 flex items-center gap-2 transition-colors ${
+                            activeTab === 'teachers'
+                                ? 'border-primary text-primary font-semibold'
+                                : 'border-transparent text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        <GraduationCap className="h-4 w-4" /> Docentes ({course.teachers?.length || 0})
                     </button>
                 </div>
 
@@ -533,6 +588,145 @@ export default function CourseShow({ course, progressByStudent, globalTopics }: 
                                         </div>
                                     </div>
                                 ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Tab 5: Teachers / Staff */}
+                {activeTab === 'teachers' && (
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="font-semibold text-base text-foreground">Equipo Docente del Curso</h3>
+                                <p className="text-xs text-muted-foreground">
+                                    Profesores autorizados para dictar sesiones, pasar asistencia y registrar el avance en este grupo.
+                                </p>
+                            </div>
+
+                            {canManageTeachers && (
+                                <Dialog open={openAddTeacherDialog} onOpenChange={setOpenAddTeacherDialog}>
+                                    <DialogTrigger asChild>
+                                        <Button size="sm" className="gap-2">
+                                            <Plus className="h-4 w-4" /> Asignar Docente
+                                        </Button>
+                                    </DialogTrigger>
+                                    <DialogContent className="sm:max-w-md">
+                                        <DialogHeader>
+                                            <DialogTitle>Asignar Docente al Curso</DialogTitle>
+                                            <DialogDescription>
+                                                Selecciona un docente de {course.institution?.name} para vincularlo a este curso.
+                                            </DialogDescription>
+                                        </DialogHeader>
+
+                                        <form onSubmit={handleAddTeacherSubmit} className="space-y-4 pt-2">
+                                            <div className="space-y-1.5">
+                                                <Label>Docente *</Label>
+                                                <SearchableSelect
+                                                    options={availableTeachers
+                                                        .filter((t) => !course.teachers?.some((ct) => ct.id === t.id))
+                                                        .map((t) => ({
+                                                            value: t.id,
+                                                            label: t.name,
+                                                            subLabel: t.email,
+                                                        }))}
+                                                    value={addTeacherForm.data.user_id}
+                                                    onChange={(val) => addTeacherForm.setData('user_id', String(val))}
+                                                    placeholder="Seleccionar profesor..."
+                                                    searchPlaceholder="Buscar por nombre o correo..."
+                                                />
+                                            </div>
+
+                                            <div className="flex items-center gap-2 pt-1">
+                                                <input
+                                                    type="checkbox"
+                                                    id="is_primary_checkbox"
+                                                    checked={addTeacherForm.data.is_primary}
+                                                    onChange={(e) => addTeacherForm.setData('is_primary', e.target.checked)}
+                                                    className="rounded border-border text-primary focus:ring-primary h-4 w-4"
+                                                />
+                                                <Label htmlFor="is_primary_checkbox" className="text-xs cursor-pointer">
+                                                    Asignar como Docente Titular (Responsable principal)
+                                                </Label>
+                                            </div>
+
+                                            <div className="flex justify-end gap-2 pt-3">
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={() => setOpenAddTeacherDialog(false)}
+                                                >
+                                                    Cancelar
+                                                </Button>
+                                                <Button
+                                                    type="submit"
+                                                    disabled={addTeacherForm.processing || !addTeacherForm.data.user_id}
+                                                >
+                                                    {addTeacherForm.processing ? 'Asignando...' : 'Asignar al Curso'}
+                                                </Button>
+                                            </div>
+                                        </form>
+                                    </DialogContent>
+                                </Dialog>
+                            )}
+                        </div>
+
+                        {(!course.teachers || course.teachers.length === 0) ? (
+                            <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">
+                                <GraduationCap className="mx-auto h-8 w-8 text-muted-foreground/50 mb-2" />
+                                <p>No hay docentes asignados formalmente a este curso.</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                {course.teachers.map((teacher) => {
+                                    const isPrimary = teacher.pivot?.is_primary;
+                                    const initials = teacher.name
+                                        .split(' ')
+                                        .map((n) => n[0])
+                                        .slice(0, 2)
+                                        .join('')
+                                        .toUpperCase();
+
+                                    return (
+                                        <div
+                                            key={teacher.id}
+                                            className="rounded-lg border bg-card p-4 shadow-sm flex items-center justify-between gap-3"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">
+                                                    {initials}
+                                                </div>
+                                                <div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="font-medium text-sm text-foreground">
+                                                            {teacher.name}
+                                                        </span>
+                                                        {isPrimary && (
+                                                            <span className="text-[10px] font-semibold text-primary bg-primary/10 px-1.5 py-0.2 rounded">
+                                                                Titular
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-xs text-muted-foreground block">
+                                                        {teacher.email}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {canManageTeachers && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                                                    title="Desvincular del curso"
+                                                    onClick={() => handleRemoveTeacher(teacher.id, teacher.name)}
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

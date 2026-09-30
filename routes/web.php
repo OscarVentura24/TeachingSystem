@@ -42,6 +42,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/courses/{course}/sessions/create', [ClassSessionController::class, 'create'])->name('courses.sessions.create');
     Route::post('/courses/{course}/sessions/suggest', [ClassSessionController::class, 'suggestTopic'])->name('courses.sessions.suggest');
     Route::post('/courses/{course}/sessions', [ClassSessionController::class, 'store'])->name('courses.sessions.store');
+
+    // Course Teachers Assignment
+    Route::post('/courses/{course}/teachers', [CourseController::class, 'addTeacher'])->name('courses.teachers.add');
+    Route::delete('/courses/{course}/teachers/{user}', [CourseController::class, 'removeTeacher'])->name('courses.teachers.remove');
+
+    // Teachers & Staff Management
+    Route::get('/teachers', [\App\Http\Controllers\TeacherController::class, 'index'])->name('teachers.index');
+    Route::post('/teachers', [\App\Http\Controllers\TeacherController::class, 'store'])->name('teachers.store');
+    Route::put('/teachers/{teacher}', [\App\Http\Controllers\TeacherController::class, 'update'])->name('teachers.update');
+    Route::delete('/teachers/{teacher}', [\App\Http\Controllers\TeacherController::class, 'destroy'])->name('teachers.destroy');
 });
 
 

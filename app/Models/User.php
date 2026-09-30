@@ -77,5 +77,38 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     {
         return $this->hasMany(Topic::class, 'created_by_user_id');
     }
+
+    public function isInstitutionAdmin(?int $institutionId = null): bool
+    {
+        $query = $this->institutionMemberships()
+            ->where('role', 'admin')
+            ->where('is_active', true);
+
+        if ($institutionId !== null) {
+            $query->where('institution_id', $institutionId);
+        }
+
+        return $query->exists();
+    }
+
+    public function canManageCourse(Course $course): bool
+    {
+        // Admin of this course's institution
+        if ($this->isInstitutionAdmin($course->institution_id)) {
+            return true;
+        }
+
+        // Explicitly assigned teacher
+        if ($course->teachers()->where('users.id', $this->id)->exists()) {
+            return true;
+        }
+
+        // If the course has no assigned teachers and the user belongs to the institution
+        if ($course->teachers()->count() === 0 && $this->institutions()->where('institutions.id', $course->institution_id)->exists()) {
+            return true;
+        }
+
+        return false;
+    }
 }
 

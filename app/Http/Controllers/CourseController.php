@@ -8,6 +8,7 @@ use App\Models\CourseTopic;
 use App\Models\Institution;
 use App\Models\StudentTopicProgress;
 use App\Models\Topic;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -22,11 +23,23 @@ class CourseController extends Controller
     {
         $user = $request->user();
 
-        // Get courses taught by or associated with user's institutions
-        $courses = Course::with(['institution', 'academicPeriod'])
-            ->withCount(['students', 'courseTopics', 'sessions'])
-            ->latest()
-            ->get();
+        $coursesQuery = Course::with(['institution', 'academicPeriod', 'teachers'])
+            ->withCount(['students', 'courseTopics', 'sessions']);
+
+        // If user is not an institution admin anywhere, only show courses they teach or unassigned courses in their institutions
+        if (!$user->isInstitutionAdmin()) {
+            $userInstitutionIds = $user->institutions()->pluck('institutions.id')->toArray();
+            $coursesQuery->where(function ($q) use ($user, $userInstitutionIds) {
+                $q->whereHas('teachers', function ($tq) use ($user) {
+                    $tq->where('users.id', $user->id);
+                })->orWhere(function ($uq) use ($userInstitutionIds) {
+                    $uq->doesntHave('teachers')
+                       ->whereIn('institution_id', $userInstitutionIds);
+                });
+            });
+        }
+
+        $courses = $coursesQuery->latest()->get();
 
         $institutions = Institution::where('is_active', true)->get();
         $academicPeriods = AcademicPeriod::all();
@@ -65,8 +78,12 @@ class CourseController extends Controller
     /**
      * Display the specified course with its syllabus, students, and coverage matrix.
      */
-    public function show(Course $course): Response
+    public function show(Request $request, Course $course): Response
     {
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para acceder a este curso.');
+        }
+
         $course->load([
             'institution',
             'academicPeriod',
@@ -92,10 +109,21 @@ class CourseController extends Controller
             ->orderBy('title')
             ->get();
 
+        // Teachers in the institution for assignment
+        $availableTeachers = User::whereHas('institutionMemberships', function ($q) use ($course) {
+            $q->where('institution_id', $course->institution_id)
+              ->where('is_active', true);
+        })->get(['id', 'name', 'email']);
+
+        $canManageTeachers = $request->user()->isInstitutionAdmin($course->institution_id) ||
+            $course->teachers()->where('users.id', $request->user()->id)->wherePivot('is_primary', true)->exists();
+
         return Inertia::render('courses/show', [
             'course' => $course,
             'progressByStudent' => $progressRecords,
             'globalTopics' => $globalTopics,
+            'availableTeachers' => $availableTeachers,
+            'canManageTeachers' => $canManageTeachers,
         ]);
     }
 
@@ -142,5 +170,40 @@ class CourseController extends Controller
         }
 
         return back()->with('success', 'Orden del pensum actualizado.');
+    }
+
+    /**
+     * Assign a teacher to the course.
+     */
+    public function addTeacher(Request $request, Course $course): RedirectResponse
+    {
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para gestionar docentes en este curso.');
+        }
+
+        $validated = $request->validate([
+            'user_id' => ['required', 'exists:users,id'],
+            'is_primary' => ['nullable', 'boolean'],
+        ]);
+
+        $course->teachers()->syncWithoutDetaching([
+            $validated['user_id'] => ['is_primary' => $validated['is_primary'] ?? false],
+        ]);
+
+        return back()->with('success', 'Docente asignado al curso.');
+    }
+
+    /**
+     * Remove a teacher from the course.
+     */
+    public function removeTeacher(Request $request, Course $course, User $user): RedirectResponse
+    {
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para gestionar docentes en este curso.');
+        }
+
+        $course->teachers()->detach($user->id);
+
+        return back()->with('success', 'Docente desvinculado del curso.');
     }
 }
