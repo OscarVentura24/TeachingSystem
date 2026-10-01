@@ -46,6 +46,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/topics/{topic}', [TopicController::class, 'destroy'])->name('topics.destroy');
     Route::post('/topics/{topic}/promote', [TopicController::class, 'promoteToGlobal'])->name('topics.promote');
 
+    // Students (Padrón Institucional de Estudiantes)
+    Route::get('/students', [\App\Http\Controllers\StudentController::class, 'index'])->name('students.index');
+    Route::post('/students', [\App\Http\Controllers\StudentController::class, 'store'])->name('students.store');
+    Route::put('/students/{student}', [\App\Http\Controllers\StudentController::class, 'update'])->name('students.update');
+    Route::delete('/students/{student}', [\App\Http\Controllers\StudentController::class, 'destroy'])->name('students.destroy');
+
     // Dynamic Class Sessions & Topic Suggestion
     Route::get('/courses/{course}/sessions/create', [ClassSessionController::class, 'create'])->name('courses.sessions.create');
     Route::post('/courses/{course}/sessions/suggest', [ClassSessionController::class, 'suggestTopic'])->name('courses.sessions.suggest');

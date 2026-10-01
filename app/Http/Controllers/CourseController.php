@@ -150,6 +150,13 @@ class CourseController extends Controller
               ->where('is_active', true);
         })->get(['id', 'name', 'email']);
 
+        // Active students enrolled in this institution (available for course enrollment)
+        $institutionStudents = Student::where('institution_id', $course->institution_id)
+            ->where('is_active', true)
+            ->orderBy('last_name')
+            ->orderBy('first_name')
+            ->get(['id', 'institution_id', 'first_name', 'last_name', 'student_id_number', 'email']);
+
         $canManageTeachers = $request->user()->isInstitutionAdmin($course->institution_id) ||
             $course->teachers()->where('users.id', $request->user()->id)->wherePivot('is_primary', true)->exists();
 
@@ -158,6 +165,7 @@ class CourseController extends Controller
             'progressByStudent' => $progressRecords,
             'globalTopics' => $globalTopics,
             'availableTeachers' => $availableTeachers,
+            'institutionStudents' => $institutionStudents,
             'canManageTeachers' => $canManageTeachers,
         ]);
     }

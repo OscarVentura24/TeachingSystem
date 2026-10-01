@@ -10,6 +10,7 @@ import {
     LayoutGrid,
     Library,
     Users,
+    UserCheck,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
@@ -80,6 +81,11 @@ export function AppSidebar() {
                   icon: Users,
               },
               {
+                  title: 'Estudiantes Globales',
+                  href: '/students',
+                  icon: UserCheck,
+              },
+              {
                   title: 'Asignaturas',
                   href: '/subjects',
                   icon: BookMarked,
@@ -105,6 +111,11 @@ export function AppSidebar() {
                   title: 'Docentes',
                   href: '/teachers',
                   icon: Users,
+              },
+              {
+                  title: 'Estudiantes',
+                  href: '/students',
+                  icon: UserCheck,
               },
               {
                   title: 'Banco de Temas',

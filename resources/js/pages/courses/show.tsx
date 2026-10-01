@@ -73,6 +73,15 @@ interface Teacher {
     };
 }
 
+interface InstitutionStudentItem {
+    id: number;
+    institution_id: number;
+    first_name: string;
+    last_name: string;
+    student_id_number?: string;
+    email?: string;
+}
+
 interface Props {
     course: {
         id: number;
@@ -89,6 +98,7 @@ interface Props {
     progressByStudent: Record<number, any[]>;
     globalTopics: GlobalTopic[];
     availableTeachers?: Array<{ id: number; name: string; email: string }>;
+    institutionStudents?: InstitutionStudentItem[];
     canManageTeachers?: boolean;
 }
 
@@ -97,6 +107,7 @@ export default function CourseShow({
     progressByStudent,
     globalTopics,
     availableTeachers = [],
+    institutionStudents = [],
     canManageTeachers = false,
 }: Props) {
     const [activeTab, setActiveTab] = useState<'matrix' | 'pensum' | 'students' | 'sessions' | 'teachers'>('matrix');
@@ -127,13 +138,20 @@ export default function CourseShow({
         description: '',
     });
 
-    // Form to create and enroll student
+    // Form to enroll an existing institutional student into this course
     const enrollStudentForm = useForm({
-        first_name: '',
-        last_name: '',
-        student_id_number: '',
+        student_id: '',
         preferred_workstation: '',
     });
+
+    const enrolledStudentIds = new Set(course.students.map((s) => s.id));
+    const availableStudents = institutionStudents.filter((s) => !enrolledStudentIds.has(s.id));
+
+    const studentSelectOptions = availableStudents.map((s) => ({
+        value: s.id,
+        label: `${s.last_name}, ${s.first_name}`,
+        subLabel: s.student_id_number ? `Cédula: ${s.student_id_number}` : s.email || undefined,
+    }));
 
     const handleSelectGlobalTopic = (topicId: string | number) => {
         const selected = globalTopics.find((t) => String(t.id) === String(topicId));
@@ -161,7 +179,7 @@ export default function CourseShow({
 
     const handleEnrollStudentSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        enrollStudentForm.post(`/courses/${course.id}/enrollments/create-and-enroll`, {
+        enrollStudentForm.post(`/courses/${course.id}/enrollments`, {
             onSuccess: () => {
                 setOpenEnrollDialog(false);
                 enrollStudentForm.reset();
@@ -534,63 +552,88 @@ export default function CourseShow({
                                 </DialogTrigger>
                                 <DialogContent className="sm:max-w-md">
                                     <DialogHeader>
-                                        <DialogTitle>Matricular Estudiante</DialogTitle>
+                                        <DialogTitle>Matricular Estudiante en el Curso</DialogTitle>
                                         <DialogDescription>
-                                            Registra los datos del estudiante para incorporarlo al curso.
+                                            Selecciona a un estudiante previamente registrado por la institución para asignarlo a este curso.
                                         </DialogDescription>
                                     </DialogHeader>
 
-                                    <form onSubmit={handleEnrollStudentSubmit} className="space-y-4 pt-2">
-                                        <div className="grid grid-cols-2 gap-3">
+                                    {availableStudents.length === 0 ? (
+                                        <div className="py-4 space-y-3">
+                                            <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
+                                                <UserCheck className="mx-auto h-8 w-8 text-muted-foreground/40 mb-2" />
+                                                <p className="font-medium text-foreground">
+                                                    {institutionStudents.length === 0
+                                                        ? 'No hay estudiantes matriculados en la institución todavía.'
+                                                        : 'Todos los estudiantes registrados en la institución ya están matriculados en este curso.'}
+                                                </p>
+                                                <p className="mt-1 text-muted-foreground">
+                                                    Los estudiantes deben ser matriculados primero a nivel institucional para estar disponibles en los cursos.
+                                                </p>
+                                            </div>
+                                            <div className="flex justify-between items-center pt-2 border-t">
+                                                <Link
+                                                    href="/students"
+                                                    className="text-xs text-primary hover:underline flex items-center gap-1 font-medium"
+                                                >
+                                                    <Plus className="h-3.5 w-3.5" /> Ir al Padrón Institucional
+                                                </Link>
+                                                <Button type="button" variant="outline" size="sm" onClick={() => setOpenEnrollDialog(false)}>
+                                                    Cerrar
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <form onSubmit={handleEnrollStudentSubmit} className="space-y-4 pt-2">
                                             <div className="space-y-1.5">
-                                                <Label htmlFor="first_name">Nombres *</Label>
-                                                <Input
-                                                    id="first_name"
-                                                    value={enrollStudentForm.data.first_name}
-                                                    onChange={(e) => enrollStudentForm.setData('first_name', e.target.value)}
+                                                <div className="flex items-center justify-between">
+                                                    <Label htmlFor="student_id">Estudiante de la Institución *</Label>
+                                                    <Link
+                                                        href="/students"
+                                                        className="text-[11px] text-primary hover:underline flex items-center gap-1"
+                                                    >
+                                                        <Plus className="h-3 w-3" /> Nuevo en Sede
+                                                    </Link>
+                                                </div>
+                                                <SearchableSelect
+                                                    options={studentSelectOptions}
+                                                    value={enrollStudentForm.data.student_id}
+                                                    onChange={(sId) => enrollStudentForm.setData('student_id', String(sId))}
+                                                    placeholder="Buscar por apellido, nombre o cédula..."
+                                                    searchPlaceholder="Escribe el nombre o cédula..."
                                                     required
                                                 />
+                                                {enrollStudentForm.errors.student_id && (
+                                                    <p className="text-xs text-destructive">{enrollStudentForm.errors.student_id}</p>
+                                                )}
                                             </div>
+
                                             <div className="space-y-1.5">
-                                                <Label htmlFor="last_name">Apellidos *</Label>
+                                                <Label htmlFor="preferred_workstation">Puesto / PC Preferida (Laboratorio)</Label>
                                                 <Input
-                                                    id="last_name"
-                                                    value={enrollStudentForm.data.last_name}
-                                                    onChange={(e) => enrollStudentForm.setData('last_name', e.target.value)}
-                                                    required
+                                                    id="preferred_workstation"
+                                                    value={enrollStudentForm.data.preferred_workstation}
+                                                    onChange={(e) => enrollStudentForm.setData('preferred_workstation', e.target.value)}
+                                                    placeholder="Ej: PC-01"
                                                 />
+                                                {enrollStudentForm.errors.preferred_workstation && (
+                                                    <p className="text-xs text-destructive">{enrollStudentForm.errors.preferred_workstation}</p>
+                                                )}
                                             </div>
-                                        </div>
 
-                                        <div className="space-y-1.5">
-                                            <Label htmlFor="student_id_number">Cédula / Carnet Institucional</Label>
-                                            <Input
-                                                id="student_id_number"
-                                                value={enrollStudentForm.data.student_id_number}
-                                                onChange={(e) => enrollStudentForm.setData('student_id_number', e.target.value)}
-                                                placeholder="Ej: V-28123456"
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <Label htmlFor="preferred_workstation">Puesto / PC Preferida (Laboratorio)</Label>
-                                            <Input
-                                                id="preferred_workstation"
-                                                value={enrollStudentForm.data.preferred_workstation}
-                                                onChange={(e) => enrollStudentForm.setData('preferred_workstation', e.target.value)}
-                                                placeholder="Ej: PC-01"
-                                            />
-                                        </div>
-
-                                        <div className="flex justify-end gap-2 pt-2">
-                                            <Button type="button" variant="outline" onClick={() => setOpenEnrollDialog(false)}>
-                                                Cancelar
-                                            </Button>
-                                            <Button type="submit" disabled={enrollStudentForm.processing}>
-                                                Matricular
-                                            </Button>
-                                        </div>
-                                    </form>
+                                            <div className="flex justify-end gap-2 pt-2">
+                                                <Button type="button" variant="outline" onClick={() => setOpenEnrollDialog(false)}>
+                                                    Cancelar
+                                                </Button>
+                                                <Button
+                                                    type="submit"
+                                                    disabled={enrollStudentForm.processing || !enrollStudentForm.data.student_id}
+                                                >
+                                                    {enrollStudentForm.processing ? 'Matriculando...' : 'Matricular en Curso'}
+                                                </Button>
+                                            </div>
+                                        </form>
+                                    )}
                                 </DialogContent>
                             </Dialog>
                         </div>
@@ -598,10 +641,22 @@ export default function CourseShow({
                         {course.students.length === 0 ? (
                             <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">
                                 <Users className="mx-auto h-8 w-8 text-muted-foreground/50 mb-2" />
-                                <p>No hay alumnos matriculados todavía en este curso.</p>
-                                <Button size="sm" variant="outline" className="mt-4" onClick={() => setOpenEnrollDialog(true)}>
-                                    Matricular Primer Estudiante
-                                </Button>
+                                <p className="font-medium text-foreground">No hay alumnos matriculados todavía en este curso.</p>
+                                <p className="text-xs mt-1">
+                                    Incorpora a los estudiantes matriculados previamente por la institución para iniciar el seguimiento pedagógico.
+                                </p>
+                                <div className="mt-4 flex items-center justify-center gap-2">
+                                    <Button size="sm" onClick={() => setOpenEnrollDialog(true)}>
+                                        <Plus className="h-4 w-4 mr-1.5" /> Matricular Estudiante
+                                    </Button>
+                                    {institutionStudents.length === 0 && (
+                                        <Link href="/students">
+                                            <Button size="sm" variant="outline">
+                                                <UserCheck className="h-4 w-4 mr-1.5" /> Padrón de Estudiantes
+                                            </Button>
+                                        </Link>
+                                    )}
+                                </div>
                             </div>
                         ) : (
                             <div className="rounded-xl border bg-card overflow-hidden">

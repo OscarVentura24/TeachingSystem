@@ -20,10 +20,15 @@ class EnrollmentController extends Controller
             'preferred_workstation' => ['nullable', 'string', 'max:50'],
         ]);
 
+        $student = Student::findOrFail($validated['student_id']);
+        if ($student->institution_id !== $course->institution_id) {
+            abort(403, 'El estudiante seleccionado no pertenece a la institución de este curso.');
+        }
+
         Enrollment::firstOrCreate(
             [
                 'course_id' => $course->id,
-                'student_id' => $validated['student_id'],
+                'student_id' => $student->id,
             ],
             [
                 'status' => 'active',
