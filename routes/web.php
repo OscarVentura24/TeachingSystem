@@ -11,7 +11,7 @@ use App\Http\Controllers\TopicController;
 Route::inertia('/', 'welcome')->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::inertia('dashboard', 'dashboard')->name('dashboard');
+    Route::get('/dashboard', \App\Http\Controllers\DashboardController::class)->name('dashboard');
 
     // Courses
     Route::get('/courses', [CourseController::class, 'index'])->name('courses.index');

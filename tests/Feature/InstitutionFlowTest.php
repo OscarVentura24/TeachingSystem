@@ -2,6 +2,8 @@
 
 use App\Models\Course;
 use App\Models\Institution;
+use App\Models\Subject;
+use App\Models\Topic;
 use App\Models\User;
 
 beforeEach(function () {
@@ -38,6 +40,16 @@ test('super admin can view institutions list with total metrics', function () {
     expect($page['totalStats']['totalInstitutions'])->toBe(2);
 });
 
+test('visiting institutions index automatically resets session to global mode', function () {
+    // Session starts with an active institution
+    $response = $this->actingAs($this->superAdmin)
+        ->withSession(['current_institution_id' => $this->instA->id])
+        ->get(route('institutions.index'));
+
+    $response->assertOk();
+    $response->assertSessionHas('current_institution_id', 'global');
+});
+
 test('non-super admin cannot access global institutions management', function () {
     $response = $this->actingAs($this->regularTeacher)->get(route('institutions.index'));
 
@@ -69,14 +81,14 @@ test('super admin can switch active institution context and global mode', functi
     $response = $this->actingAs($this->superAdmin)->post(route('institutions.switch'), [
         'institution_id' => $this->instB->id,
     ]);
-    $response->assertRedirect(route('courses.index'));
+    $response->assertRedirect(route('dashboard'));
     $response->assertSessionHas('current_institution_id', $this->instB->id);
 
     // Switch to Global Mode
     $globalResponse = $this->actingAs($this->superAdmin)->post(route('institutions.switch'), [
         'institution_id' => 'global',
     ]);
-    $globalResponse->assertRedirect(route('institutions.index'));
+    $globalResponse->assertRedirect(route('dashboard'));
     $globalResponse->assertSessionHas('current_institution_id', 'global');
 });
 
@@ -110,4 +122,81 @@ test('super admin can update institution details and status', function () {
     $this->instA->refresh();
     expect($this->instA->name)->toBe('Universidad Metropolitana (Actualizada)')
         ->and($this->instA->code)->toBe('UNIMET-MOD');
+});
+
+test('cannot modify global topics while inside an institution context', function () {
+    $subject = Subject::create(['name' => 'Algoritmos']);
+    $topic = Topic::create([
+        'title' => 'Recursividad',
+        'area' => 'Algoritmos',
+        'subject_id' => $subject->id,
+    ]);
+
+    // Attempting store while in institution context
+    $responseStore = $this->actingAs($this->superAdmin)
+        ->withSession(['current_institution_id' => $this->instA->id])
+        ->post(route('topics.store'), [
+            'title' => 'Nuevo Tema',
+            'subject_id' => $subject->id,
+        ]);
+    $responseStore->assertForbidden();
+
+    // Attempting update while in institution context
+    $responseUpdate = $this->actingAs($this->superAdmin)
+        ->withSession(['current_institution_id' => $this->instA->id])
+        ->put(route('topics.update', $topic), [
+            'title' => 'Recursividad Avanzada',
+        ]);
+    $responseUpdate->assertForbidden();
+
+    // Attempting delete while in institution context
+    $responseDelete = $this->actingAs($this->superAdmin)
+        ->withSession(['current_institution_id' => $this->instA->id])
+        ->delete(route('topics.destroy', $topic));
+    $responseDelete->assertForbidden();
+});
+
+test('cannot modify global subjects while inside an institution context', function () {
+    $subject = Subject::create(['name' => 'Matemáticas Discretas']);
+
+    // Attempting store while in institution context
+    $responseStore = $this->actingAs($this->superAdmin)
+        ->withSession(['current_institution_id' => $this->instA->id])
+        ->post(route('subjects.store'), [
+            'name' => 'Nueva Asignatura',
+        ]);
+    $responseStore->assertForbidden();
+
+    // Attempting update while in institution context
+    $responseUpdate = $this->actingAs($this->superAdmin)
+        ->withSession(['current_institution_id' => $this->instA->id])
+        ->put(route('subjects.update', $subject), [
+            'name' => 'Matemáticas Discretas II',
+        ]);
+    $responseUpdate->assertForbidden();
+
+    // Attempting delete while in institution context
+    $responseDelete = $this->actingAs($this->superAdmin)
+        ->withSession(['current_institution_id' => $this->instA->id])
+        ->delete(route('subjects.destroy', $subject));
+    $responseDelete->assertForbidden();
+});
+
+test('dashboard returns global mode for super admin and institutional mode when institution is selected', function () {
+    // Global Mode
+    $globalResponse = $this->actingAs($this->superAdmin)
+        ->withSession(['current_institution_id' => 'global'])
+        ->get(route('dashboard'));
+    $globalResponse->assertOk();
+    $globalProps = $globalResponse->viewData('page')['props'];
+    expect($globalProps['mode'])->toBe('global');
+
+    // Institutional Mode
+    $instResponse = $this->actingAs($this->superAdmin)
+        ->withSession(['current_institution_id' => $this->instA->id])
+        ->get(route('dashboard'));
+    $instResponse->assertOk();
+    $instProps = $instResponse->viewData('page')['props'];
+    expect($instProps['mode'])->toBe('institution')
+        ->and($instProps['institution']['id'])->toBe($this->instA->id);
 });

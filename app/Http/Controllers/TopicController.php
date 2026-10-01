@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Subject;
 use App\Models\Topic;
+use App\Services\InstitutionContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -11,10 +12,14 @@ use Inertia\Response;
 
 class TopicController extends Controller
 {
+    public function __construct(
+        protected InstitutionContext $contextService
+    ) {}
+
     /**
      * Display a listing of global topics.
      */
-    public function index(): Response
+    public function index(Request $request): Response
     {
         $topics = Topic::with(['prerequisites', 'subject'])
             ->orderBy('area')
@@ -26,11 +31,13 @@ class TopicController extends Controller
             ->get();
 
         $areas = Topic::distinct()->pluck('area')->filter()->values();
+        $isGlobalMode = $this->contextService->isGlobalMode($request);
 
         return Inertia::render('topics/index', [
             'topics' => $topics,
             'subjects' => $subjects,
             'areas' => $areas,
+            'isGlobalMode' => $isGlobalMode,
         ]);
     }
 
@@ -39,6 +46,14 @@ class TopicController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        if (!$request->user()->isSuperAdmin()) {
+            abort(403, 'Solo el Super Administrador de la plataforma puede agregar temas al Banco Global.');
+        }
+
+        if ($this->contextService->getActiveInstitutionId($request) !== null) {
+            abort(403, 'Para crear o modificar temas del Banco Global debes estar en la Plataforma Global.');
+        }
+
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'subject_id' => ['nullable', 'exists:subjects,id'],
@@ -88,6 +103,14 @@ class TopicController extends Controller
      */
     public function update(Request $request, Topic $topic): RedirectResponse
     {
+        if (!$request->user()->isSuperAdmin()) {
+            abort(403, 'Solo el Super Administrador de la plataforma puede modificar temas del Banco Global.');
+        }
+
+        if ($this->contextService->getActiveInstitutionId($request) !== null) {
+            abort(403, 'Para editar temas del Banco Global debes estar en la Plataforma Global.');
+        }
+
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'subject_id' => ['nullable', 'exists:subjects,id'],
@@ -138,8 +161,16 @@ class TopicController extends Controller
     /**
      * Remove the specified global topic from storage.
      */
-    public function destroy(Topic $topic): RedirectResponse
+    public function destroy(Request $request, Topic $topic): RedirectResponse
     {
+        if (!$request->user()->isSuperAdmin()) {
+            abort(403, 'Solo el Super Administrador de la plataforma puede eliminar temas del Banco Global.');
+        }
+
+        if ($this->contextService->getActiveInstitutionId($request) !== null) {
+            abort(403, 'Para eliminar temas del Banco Global debes estar en la Plataforma Global.');
+        }
+
         $topic->prerequisites()->detach();
         $topic->prerequisiteFor()->detach();
         $topic->delete();

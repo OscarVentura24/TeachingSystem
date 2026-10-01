@@ -8,6 +8,13 @@ beforeEach(function () {
     $this->user = User::factory()->create([
         'name' => 'Profesor Roberto',
         'email' => 'roberto@teachingsystem.test',
+        'is_super_admin' => true,
+    ]);
+
+    $this->regularUser = User::factory()->create([
+        'name' => 'Profesor Regular',
+        'email' => 'regular@teachingsystem.test',
+        'is_super_admin' => false,
     ]);
 });
 
@@ -22,7 +29,7 @@ test('user can view subjects list', function () {
     $response->assertOk();
 });
 
-test('user can create a new subject', function () {
+test('super admin can create a new subject', function () {
     $response = $this->actingAs($this->user)->post(route('subjects.store'), [
         'name' => 'Desarrollo Móvil',
         'code' => 'DM-201',
@@ -36,7 +43,15 @@ test('user can create a new subject', function () {
         ->and($subject->code)->toBe('DM-201');
 });
 
-test('user can create a topic linked to a subject', function () {
+test('non-super admin cannot create a subject', function () {
+    $response = $this->actingAs($this->regularUser)->post(route('subjects.store'), [
+        'name' => 'Asignatura no permitida',
+    ]);
+
+    $response->assertForbidden();
+});
+
+test('super admin can create a topic linked to a subject in global mode', function () {
     $subject = Subject::create([
         'name' => 'Sistemas Distribuidos',
         'code' => 'SD-301',

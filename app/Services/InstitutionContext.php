@@ -31,7 +31,12 @@ class InstitutionContext
             }
         }
 
-        // Default: first available institution
+        // If super admin and no explicit institution is chosen, default to global mode
+        if ($user->isSuperAdmin()) {
+            return null;
+        }
+
+        // Default for non-super-admin users: first available institution
         $available = $this->getAvailableInstitutions($user);
         if ($available->isNotEmpty()) {
             $defaultId = $available->first()->id;
@@ -40,6 +45,15 @@ class InstitutionContext
         }
 
         return null;
+    }
+
+    /**
+     * Check if current context is in global super admin mode.
+     */
+    public function isGlobalMode(Request $request): bool
+    {
+        $user = $request->user();
+        return $user && $user->isSuperAdmin() && $this->getActiveInstitutionId($request) === null;
     }
 
     /**

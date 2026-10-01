@@ -29,15 +29,16 @@ class InstitutionController extends Controller
             abort(403, 'Solo el Super Administrador de la plataforma puede acceder a la gestión global de instituciones.');
         }
 
+        // Entering Global Institutions Hub automatically sets Global Mode
+        $this->contextService->setActiveInstitution($request, 'global');
+
         $institutions = Institution::withCount(['courses', 'students', 'users', 'academicPeriods'])
             ->orderBy('name')
             ->get();
 
-        $activeContextId = $this->contextService->getActiveInstitutionId($request);
-
         return Inertia::render('institutions/index', [
             'institutions' => $institutions,
-            'activeInstitutionId' => $activeContextId,
+            'activeInstitutionId' => null,
             'totalStats' => [
                 'totalInstitutions' => $institutions->count(),
                 'activeInstitutions' => $institutions->where('is_active', true)->count(),
@@ -165,9 +166,9 @@ class InstitutionController extends Controller
         }
 
         if ($target === 'global' || $target === null) {
-            return redirect()->route('institutions.index');
+            return redirect()->route('dashboard');
         }
 
-        return redirect()->route('courses.index');
+        return redirect()->route('dashboard');
     }
 }
