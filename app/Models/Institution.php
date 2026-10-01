@@ -53,4 +53,9 @@ class Institution extends Model
     {
         return $this->hasMany(Student::class);
     }
+
+    public function topics(): HasMany
+    {
+        return $this->hasMany(Topic::class);
+    }
 }

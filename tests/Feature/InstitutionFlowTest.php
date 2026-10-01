@@ -124,35 +124,42 @@ test('super admin can update institution details and status', function () {
         ->and($this->instA->code)->toBe('UNIMET-MOD');
 });
 
-test('cannot modify global topics while inside an institution context', function () {
+test('cannot modify global master topics while inside an institution context, but can create institutional topics', function () {
     $subject = Subject::create(['name' => 'Algoritmos']);
-    $topic = Topic::create([
+    $globalTopic = Topic::create([
         'title' => 'Recursividad',
         'area' => 'Algoritmos',
         'subject_id' => $subject->id,
+        'is_global' => true,
+        'institution_id' => null,
     ]);
 
-    // Attempting store while in institution context
+    // Creating topic while in institution context creates an institutional topic
     $responseStore = $this->actingAs($this->superAdmin)
         ->withSession(['current_institution_id' => $this->instA->id])
         ->post(route('topics.store'), [
-            'title' => 'Nuevo Tema',
+            'title' => 'Tema Institucional A',
             'subject_id' => $subject->id,
         ]);
-    $responseStore->assertForbidden();
+    $responseStore->assertRedirect();
 
-    // Attempting update while in institution context
+    $createdTopic = Topic::where('title', 'Tema Institucional A')->first();
+    expect($createdTopic)->not->toBeNull();
+    expect($createdTopic->institution_id)->toBe($this->instA->id);
+    expect($createdTopic->is_global)->toBeFalse();
+
+    // Attempting update on a global master topic while in institution context is forbidden
     $responseUpdate = $this->actingAs($this->superAdmin)
         ->withSession(['current_institution_id' => $this->instA->id])
-        ->put(route('topics.update', $topic), [
+        ->put(route('topics.update', $globalTopic), [
             'title' => 'Recursividad Avanzada',
         ]);
     $responseUpdate->assertForbidden();
 
-    // Attempting delete while in institution context
+    // Attempting delete on a global master topic while in institution context is forbidden
     $responseDelete = $this->actingAs($this->superAdmin)
         ->withSession(['current_institution_id' => $this->instA->id])
-        ->delete(route('topics.destroy', $topic));
+        ->delete(route('topics.destroy', $globalTopic));
     $responseDelete->assertForbidden();
 });
 

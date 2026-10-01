@@ -14,6 +14,8 @@ class Topic extends Model
 
     protected $fillable = [
         'created_by_user_id',
+        'institution_id',
+        'source_topic_id',
         'subject_id',
         'title',
         'area',
@@ -22,6 +24,8 @@ class Topic extends Model
         'description',
         'resources_notes',
         'estimated_minutes',
+        'is_global',
+        'status',
         'is_active',
     ];
 
@@ -29,8 +33,24 @@ class Topic extends Model
     {
         return [
             'estimated_minutes' => 'integer',
+            'is_global' => 'boolean',
             'is_active' => 'boolean',
         ];
+    }
+
+    public function institution(): BelongsTo
+    {
+        return $this->belongsTo(Institution::class);
+    }
+
+    public function sourceTopic(): BelongsTo
+    {
+        return $this->belongsTo(Topic::class, 'source_topic_id');
+    }
+
+    public function derivedTopics(): HasMany
+    {
+        return $this->hasMany(Topic::class, 'source_topic_id');
     }
 
     public function subject(): BelongsTo
@@ -65,4 +85,26 @@ class Topic extends Model
     {
         return $this->hasMany(CourseTopic::class);
     }
+
+    /**
+     * Scope topics visible in a given context.
+     * In Institutional Mode: Global topics OR topics created by that institution.
+     * In Global Mode: If Super Admin, can view all (or global).
+     */
+    public function scopeVisibleInContext($query, ?int $institutionId, bool $isSuperAdmin = false)
+    {
+        if ($institutionId !== null) {
+            return $query->where(function ($q) use ($institutionId) {
+                $q->where('is_global', true)
+                  ->orWhere('institution_id', $institutionId);
+            });
+        }
+
+        if ($isSuperAdmin) {
+            return $query; // Super admin in global mode can see all
+        }
+
+        return $query->where('is_global', true);
+    }
 }
+

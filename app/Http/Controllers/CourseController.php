@@ -133,9 +133,13 @@ class CourseController extends Controller
             ->get()
             ->groupBy('student_id');
 
-        // Global topics available to add to pensum
+        // Topics available to add to pensum: global topics OR topics belonging to this course's institution
         $globalTopics = Topic::where('is_active', true)
-            ->with('prerequisites')
+            ->where(function ($q) use ($course) {
+                $q->where('is_global', true)
+                  ->orWhere('institution_id', $course->institution_id);
+            })
+            ->with(['prerequisites', 'subject'])
             ->orderBy('area')
             ->orderBy('title')
             ->get();
@@ -169,6 +173,13 @@ class CourseController extends Controller
             'unit_title' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
         ]);
+
+        if (!empty($validated['topic_id'])) {
+            $topic = Topic::find($validated['topic_id']);
+            if (!$topic || (!$topic->is_global && $topic->institution_id !== $course->institution_id)) {
+                abort(403, 'El tema seleccionado no pertenece al catálogo disponible para esta institución.');
+            }
+        }
 
         $nextSortOrder = ($course->courseTopics()->max('sort_order') ?? 0) + 1;
 

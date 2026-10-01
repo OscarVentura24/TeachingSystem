@@ -39,11 +39,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::put('/academic-periods/{academicPeriod}', [\App\Http\Controllers\AcademicPeriodController::class, 'update'])->name('academic-periods.update');
     Route::delete('/academic-periods/{academicPeriod}', [\App\Http\Controllers\AcademicPeriodController::class, 'destroy'])->name('academic-periods.destroy');
 
-    // Global Topics Bank
+    // Topics Bank (Global & Institutional)
     Route::get('/topics', [TopicController::class, 'index'])->name('topics.index');
     Route::post('/topics', [TopicController::class, 'store'])->name('topics.store');
     Route::put('/topics/{topic}', [TopicController::class, 'update'])->name('topics.update');
     Route::delete('/topics/{topic}', [TopicController::class, 'destroy'])->name('topics.destroy');
+    Route::post('/topics/{topic}/promote', [TopicController::class, 'promoteToGlobal'])->name('topics.promote');
 
     // Dynamic Class Sessions & Topic Suggestion
     Route::get('/courses/{course}/sessions/create', [ClassSessionController::class, 'create'])->name('courses.sessions.create');
