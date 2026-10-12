@@ -15,6 +15,8 @@ class Institution extends Model
         'name',
         'slug',
         'code',
+        'matricula_format',
+        'matricula_prefix',
         'description',
         'logo_path',
         'is_active',

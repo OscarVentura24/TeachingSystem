@@ -48,6 +48,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Students (Padrón Institucional de Estudiantes)
     Route::get('/students', [\App\Http\Controllers\StudentController::class, 'index'])->name('students.index');
+    Route::get('/students/generate-matricula', [\App\Http\Controllers\StudentController::class, 'generateMatricula'])->name('students.generate-matricula');
     Route::post('/students', [\App\Http\Controllers\StudentController::class, 'store'])->name('students.store');
     Route::put('/students/{student}', [\App\Http\Controllers\StudentController::class, 'update'])->name('students.update');
     Route::delete('/students/{student}', [\App\Http\Controllers\StudentController::class, 'destroy'])->name('students.destroy');
