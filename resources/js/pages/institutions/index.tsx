@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Head, useForm, router } from '@inertiajs/react';
 import {
     Building2,
@@ -13,6 +13,7 @@ import {
     XCircle,
     Calendar,
     Globe,
+    ListFilter,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -50,10 +51,15 @@ interface Props {
     };
 }
 
+type InstitutionSortField = 'name' | 'code' | 'students' | 'courses' | 'status';
+type InstitutionSortDirection = 'asc' | 'desc';
+
 export default function InstitutionsIndex({ institutions, activeInstitutionId, totalStats }: Props) {
     const [openCreateDialog, setOpenCreateDialog] = useState(false);
     const [editingInstitution, setEditingInstitution] = useState<InstitutionItem | null>(null);
     const [search, setSearch] = useState('');
+    const [sortField, setSortField] = useState<InstitutionSortField>('name');
+    const [sortDirection, setSortDirection] = useState<InstitutionSortDirection>('asc');
 
     const createForm = useForm({
         name: '',
@@ -68,14 +74,54 @@ export default function InstitutionsIndex({ institutions, activeInstitutionId, t
         is_active: true,
     });
 
-    const filteredInstitutions = institutions.filter((inst) => {
-        const query = search.toLowerCase();
-        return (
-            inst.name.toLowerCase().includes(query) ||
-            (inst.code && inst.code.toLowerCase().includes(query)) ||
-            (inst.description && inst.description.toLowerCase().includes(query))
-        );
-    });
+    const handleSortDropdownChange = (val: string) => {
+        const parts = val.split('_');
+        const dir = parts.pop() as InstitutionSortDirection;
+        const field = parts.join('_') as InstitutionSortField;
+        if (field && dir) {
+            setSortField(field);
+            setSortDirection(dir);
+        }
+    };
+
+    const filteredAndSortedInstitutions = useMemo(() => {
+        const query = search.trim().toLowerCase();
+        const filtered = institutions.filter((inst) => {
+            if (!query) return true;
+            return (
+                inst.name.toLowerCase().includes(query) ||
+                (inst.code && inst.code.toLowerCase().includes(query)) ||
+                (inst.description && inst.description.toLowerCase().includes(query))
+            );
+        });
+
+        return [...filtered].sort((a, b) => {
+            let comparison = 0;
+            switch (sortField) {
+                case 'name':
+                    comparison = a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
+                    break;
+                case 'code': {
+                    const codeA = a.code || '';
+                    const codeB = b.code || '';
+                    comparison = codeA.localeCompare(codeB, 'es', { sensitivity: 'base' });
+                    break;
+                }
+                case 'students':
+                    comparison = (a.students_count || 0) - (b.students_count || 0);
+                    break;
+                case 'courses':
+                    comparison = (a.courses_count || 0) - (b.courses_count || 0);
+                    break;
+                case 'status':
+                    comparison = (a.is_active ? 1 : 0) - (b.is_active ? 1 : 0);
+                    break;
+                default:
+                    comparison = 0;
+            }
+            return sortDirection === 'asc' ? comparison : -comparison;
+        });
+    }, [institutions, search, sortField, sortDirection]);
 
     const handleCreateSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -170,6 +216,7 @@ export default function InstitutionsIndex({ institutions, activeInstitutionId, t
                                     <Label htmlFor="inst_name">Nombre de la Institución *</Label>
                                     <Input
                                         id="inst_name"
+                                        autoFocus
                                         value={createForm.data.name}
                                         onChange={(e) => createForm.setData('name', e.target.value)}
                                         placeholder="Ej: Colegio San Ignacio"
@@ -252,19 +299,42 @@ export default function InstitutionsIndex({ institutions, activeInstitutionId, t
                     </div>
                 </div>
 
-                {/* Search */}
-                <div className="relative w-full max-w-md">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        placeholder="Buscar por nombre, código o descripción..."
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className="pl-9"
-                    />
+                {/* Search & Sort Toolbar */}
+                <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+                    <div className="relative w-full max-w-md">
+                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            autoFocus
+                            placeholder="Buscar por nombre, código o descripción..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            className="pl-9"
+                        />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <ListFilter className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">Ordenar por:</span>
+                        <select
+                            value={`${sortField}_${sortDirection}`}
+                            onChange={(e) => handleSortDropdownChange(e.target.value)}
+                            className="h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+                        >
+                            <option value="name_asc">Nombre (A - Z)</option>
+                            <option value="name_desc">Nombre (Z - A)</option>
+                            <option value="code_asc">Código (A - Z)</option>
+                            <option value="students_desc">Más estudiantes primero</option>
+                            <option value="students_asc">Menos estudiantes primero</option>
+                            <option value="courses_desc">Más cursos primero</option>
+                            <option value="courses_asc">Menos cursos primero</option>
+                            <option value="status_desc">Activas primero</option>
+                            <option value="status_asc">Inactivas primero</option>
+                        </select>
+                    </div>
                 </div>
 
                 {/* Institutions Grid */}
-                {filteredInstitutions.length === 0 ? (
+                {filteredAndSortedInstitutions.length === 0 ? (
                     <div className="flex flex-col items-center justify-center p-12 text-center border rounded-lg border-dashed bg-muted/10">
                         <Building2 className="h-10 w-10 text-muted-foreground/60 mb-3" />
                         <h3 className="font-semibold text-lg text-foreground">No se encontraron instituciones</h3>
@@ -276,7 +346,7 @@ export default function InstitutionsIndex({ institutions, activeInstitutionId, t
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                        {filteredInstitutions.map((inst) => {
+                        {filteredAndSortedInstitutions.map((inst) => {
                             const isCurrent = activeInstitutionId === inst.id;
                             const initials = inst.name
                                 .split(' ')
@@ -424,6 +494,7 @@ export default function InstitutionsIndex({ institutions, activeInstitutionId, t
                                 <Label htmlFor="edit_inst_name">Nombre de la Institución *</Label>
                                 <Input
                                     id="edit_inst_name"
+                                    autoFocus
                                     value={editForm.data.name}
                                     onChange={(e) => editForm.setData('name', e.target.value)}
                                     required

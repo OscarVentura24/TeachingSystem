@@ -468,6 +468,7 @@ export default function StudentsIndex({
                                             <Label htmlFor="first_name">Nombres *</Label>
                                             <Input
                                                 id="first_name"
+                                                autoFocus
                                                 placeholder="Ej: Carlos"
                                                 value={createForm.data.first_name}
                                                 onChange={(e) => createForm.setData('first_name', e.target.value)}
@@ -728,6 +729,7 @@ export default function StudentsIndex({
                                             <Label htmlFor="edit_first_name">Nombres *</Label>
                                             <Input
                                                 id="edit_first_name"
+                                                autoFocus
                                                 value={editForm.data.first_name}
                                                 onChange={(e) => editForm.setData('first_name', e.target.value)}
                                                 required
@@ -833,6 +835,7 @@ export default function StudentsIndex({
                         <div className="relative w-full sm:w-80">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
+                                autoFocus
                                 placeholder="Buscar por nombre, matrícula o curso..."
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}

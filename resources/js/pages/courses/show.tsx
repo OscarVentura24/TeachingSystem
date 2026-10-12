@@ -280,6 +280,7 @@ export default function CourseShow({
                                         <Label htmlFor="edit_course_name">Nombre del Curso *</Label>
                                         <Input
                                             id="edit_course_name"
+                                            autoFocus
                                             value={editCourseForm.data.name}
                                             onChange={(e) => editCourseForm.setData('name', e.target.value)}
                                             required

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Head, Link, useForm, router } from '@inertiajs/react';
 import {
     Plus,
@@ -15,6 +15,10 @@ import {
     Sparkles,
     Share2,
     Copy,
+    ListFilter,
+    ArrowUpDown,
+    ArrowUp,
+    ArrowDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -64,6 +68,9 @@ interface Props {
     activeInstitution?: { id: number; name: string } | null;
 }
 
+type TopicSortField = 'title' | 'area' | 'unit' | 'minutes' | 'scope';
+type TopicSortDirection = 'asc' | 'desc';
+
 export default function TopicsIndex({
     topics,
     globalSuggestions = [],
@@ -79,6 +86,8 @@ export default function TopicsIndex({
     const [selectedArea, setSelectedArea] = useState<string>('all');
     const [filterScope, setFilterScope] = useState<'all' | 'global' | 'institution'>('all');
     const [search, setSearch] = useState('');
+    const [sortField, setSortField] = useState<TopicSortField>('title');
+    const [sortDirection, setSortDirection] = useState<TopicSortDirection>('asc');
 
     const createForm = useForm({
         title: '',
@@ -105,26 +114,94 @@ export default function TopicsIndex({
         prerequisite_ids: [] as number[],
     });
 
-    const filteredTopics = topics.filter((t) => {
-        const matchesArea =
-            selectedArea === 'all' ||
-            t.area === selectedArea ||
-            (t.subject && t.subject.name === selectedArea);
+    const handleSort = (field: TopicSortField) => {
+        if (sortField === field) {
+            setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+        } else {
+            setSortField(field);
+            setSortDirection('asc');
+        }
+    };
 
-        const matchesScope =
-            filterScope === 'all' ||
-            (filterScope === 'global' && t.is_global) ||
-            (filterScope === 'institution' && (!t.is_global || t.institution_id !== null));
+    const handleSortDropdownChange = (val: string) => {
+        const parts = val.split('_');
+        const dir = parts.pop() as TopicSortDirection;
+        const field = parts.join('_') as TopicSortField;
+        if (field && dir) {
+            setSortField(field);
+            setSortDirection(dir);
+        }
+    };
 
-        const matchesSearch =
-            t.title.toLowerCase().includes(search.toLowerCase()) ||
-            (t.unit_title && t.unit_title.toLowerCase().includes(search.toLowerCase())) ||
-            (t.description && t.description.toLowerCase().includes(search.toLowerCase())) ||
-            (t.area && t.area.toLowerCase().includes(search.toLowerCase())) ||
-            (t.institution && t.institution.name.toLowerCase().includes(search.toLowerCase()));
+    const renderSortIcon = (field: TopicSortField) => {
+        if (sortField !== field) {
+            return (
+                <ArrowUpDown className="h-3 w-3 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors shrink-0" />
+            );
+        }
+        return sortDirection === 'asc' ? (
+            <ArrowUp className="h-3.5 w-3.5 text-primary shrink-0" />
+        ) : (
+            <ArrowDown className="h-3.5 w-3.5 text-primary shrink-0" />
+        );
+    };
 
-        return matchesArea && matchesScope && matchesSearch;
-    });
+    const filteredAndSortedTopics = useMemo(() => {
+        const query = search.trim().toLowerCase();
+        const filtered = topics.filter((t) => {
+            const matchesArea =
+                selectedArea === 'all' ||
+                t.area === selectedArea ||
+                (t.subject && t.subject.name === selectedArea);
+
+            const matchesScope =
+                filterScope === 'all' ||
+                (filterScope === 'global' && t.is_global) ||
+                (filterScope === 'institution' && (!t.is_global || t.institution_id !== null));
+
+            const matchesSearch =
+                !query ||
+                t.title.toLowerCase().includes(query) ||
+                (t.unit_title && t.unit_title.toLowerCase().includes(query)) ||
+                (t.description && t.description.toLowerCase().includes(query)) ||
+                (t.area && t.area.toLowerCase().includes(query)) ||
+                (t.institution && t.institution.name.toLowerCase().includes(query));
+
+            return matchesArea && matchesScope && matchesSearch;
+        });
+
+        return [...filtered].sort((a, b) => {
+            let comparison = 0;
+            switch (sortField) {
+                case 'title':
+                    comparison = a.title.localeCompare(b.title, 'es', { sensitivity: 'base' });
+                    break;
+                case 'area': {
+                    const areaA = a.subject?.name || a.area || '';
+                    const areaB = b.subject?.name || b.area || '';
+                    comparison = areaA.localeCompare(areaB, 'es', { sensitivity: 'base' });
+                    break;
+                }
+                case 'unit': {
+                    const unitA = a.unit_title || '';
+                    const unitB = b.unit_title || '';
+                    comparison = unitA.localeCompare(unitB, 'es', { sensitivity: 'base' });
+                    break;
+                }
+                case 'minutes':
+                    comparison = (a.estimated_minutes || 0) - (b.estimated_minutes || 0);
+                    break;
+                case 'scope': {
+                    const scopeVal = (item: TopicItem) => (item.is_global && !item.institution_id ? 2 : 1);
+                    comparison = scopeVal(b) - scopeVal(a);
+                    break;
+                }
+                default:
+                    comparison = 0;
+            }
+            return sortDirection === 'asc' ? comparison : -comparison;
+        });
+    }, [topics, selectedArea, filterScope, search, sortField, sortDirection]);
 
     const handleCreateSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -370,6 +447,7 @@ export default function TopicsIndex({
                                         <Label htmlFor="create_title">Título del Tema *</Label>
                                         <Input
                                             id="create_title"
+                                            autoFocus
                                             placeholder="Ej: Programación Orientada a Objetos: Clases y Objetos"
                                             value={createForm.data.title}
                                             onChange={(e) => createForm.setData('title', e.target.value)}
@@ -523,6 +601,7 @@ export default function TopicsIndex({
                                         <Label htmlFor="edit_title">Título del Tema *</Label>
                                         <Input
                                             id="edit_title"
+                                            autoFocus
                                             value={editForm.data.title}
                                             onChange={(e) => editForm.setData('title', e.target.value)}
                                             required
@@ -654,19 +733,20 @@ export default function TopicsIndex({
                     </div>
                 </div>
 
-                {/* Scope filter and Search Bar */}
-                <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
-                    <div className="relative w-full sm:w-72">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            placeholder="Buscar por título, área o unidad..."
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            className="pl-9 text-xs"
-                        />
-                    </div>
+                {/* Scope filter, Sorting and Search Bar */}
+                <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
+                    <div className="flex flex-1 flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
+                        <div className="relative w-full sm:w-72">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                autoFocus
+                                placeholder="Buscar por título, área o unidad..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="pl-9 text-xs"
+                            />
+                        </div>
 
-                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                         {/* Scope Toggle (Todos / Oficiales / Institucionales) */}
                         <div className="flex items-center rounded-lg border bg-muted/30 p-0.5 text-xs">
                             <button
@@ -691,14 +771,16 @@ export default function TopicsIndex({
                                 <Building2 className="h-3 w-3 text-emerald-500" /> Institucionales
                             </button>
                         </div>
+                    </div>
 
+                    <div className="flex flex-wrap items-center gap-2 self-end lg:self-auto">
                         {/* Area filter */}
                         <div className="flex flex-wrap gap-1">
                             <Button
                                 size="sm"
                                 variant={selectedArea === 'all' ? 'default' : 'outline'}
                                 onClick={() => setSelectedArea('all')}
-                                className="text-xs h-7 px-2.5"
+                                className="text-xs h-8 px-2.5"
                             >
                                 Todas las áreas
                             </Button>
@@ -708,26 +790,51 @@ export default function TopicsIndex({
                                     size="sm"
                                     variant={selectedArea === area ? 'default' : 'outline'}
                                     onClick={() => setSelectedArea(area)}
-                                    className="text-xs h-7 px-2.5"
+                                    className="text-xs h-8 px-2.5"
                                 >
                                     {area}
                                 </Button>
                             ))}
                         </div>
+
+                        {/* Sort Selector */}
+                        <div className="flex items-center gap-1.5">
+                            <ListFilter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span className="text-xs text-muted-foreground whitespace-nowrap hidden sm:inline">Ordenar:</span>
+                            <select
+                                value={`${sortField}_${sortDirection}`}
+                                onChange={(e) => handleSortDropdownChange(e.target.value)}
+                                className="h-8 rounded-lg border bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            >
+                                <option value="title_asc">Título (A → Z)</option>
+                                <option value="title_desc">Título (Z → A)</option>
+                                <option value="area_asc">Asignatura (A → Z)</option>
+                                <option value="area_desc">Asignatura (Z → A)</option>
+                                <option value="unit_asc">Unidad (A → Z)</option>
+                                <option value="unit_desc">Unidad (Z → A)</option>
+                                <option value="minutes_desc">Duración (Mayor tiempo)</option>
+                                <option value="minutes_asc">Duración (Menor tiempo)</option>
+                                <option value="scope_asc">Origen (Oficiales primero)</option>
+                            </select>
+                        </div>
+
+                        <span className="text-[11px] text-muted-foreground bg-muted/60 px-2 py-1 rounded-md border border-border/40 whitespace-nowrap">
+                            {filteredAndSortedTopics.length} {filteredAndSortedTopics.length === 1 ? 'tema' : 'temas'}
+                        </span>
                     </div>
                 </div>
 
                 {/* Content: Empty State */}
-                {filteredTopics.length === 0 ? (
+                {filteredAndSortedTopics.length === 0 ? (
                     <div className="rounded-xl border border-dashed p-12 text-center text-muted-foreground">
                         <Library className="mx-auto h-10 w-10 text-muted-foreground/40 mb-2" />
                         <p className="font-medium">No se encontraron temas en el banco con los filtros actuales.</p>
-                        <p className="text-xs mt-1">Crea un nuevo tema o ajusta tus términos de búsqueda.</p>
+                        <p className="text-xs mt-1">Crea un nuevo tema o ajusta tus términos de búsqueda o filtros.</p>
                     </div>
                 ) : viewMode === 'grid' ? (
                     /* View 1: Card Grid View */
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        {filteredTopics.map((topic) => {
+                        {filteredAndSortedTopics.map((topic) => {
                             const isGlobalMaster = Boolean(topic.is_global && !topic.institution_id);
                             const isOwnInstitutional = Boolean(
                                 topic.institution_id &&
@@ -876,16 +983,48 @@ export default function TopicsIndex({
                             <thead className="bg-muted/60 border-b">
                                 <tr>
                                     <th className="px-4 py-3 font-semibold text-foreground min-w-[220px]">
-                                        Título del Tema
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSort('title')}
+                                            className="flex items-center gap-1.5 hover:text-primary transition-colors group cursor-pointer text-left"
+                                            title="Ordenar por título"
+                                        >
+                                            <span>Título del Tema</span>
+                                            {renderSortIcon('title')}
+                                        </button>
                                     </th>
                                     <th className="px-4 py-3 font-semibold text-foreground min-w-[130px]">
-                                        Origen
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSort('scope')}
+                                            className="flex items-center gap-1.5 hover:text-primary transition-colors group cursor-pointer text-left"
+                                            title="Ordenar por origen"
+                                        >
+                                            <span>Origen</span>
+                                            {renderSortIcon('scope')}
+                                        </button>
                                     </th>
                                     <th className="px-4 py-3 font-semibold text-foreground min-w-[140px]">
-                                        Asignatura
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSort('area')}
+                                            className="flex items-center gap-1.5 hover:text-primary transition-colors group cursor-pointer text-left"
+                                            title="Ordenar por asignatura"
+                                        >
+                                            <span>Asignatura</span>
+                                            {renderSortIcon('area')}
+                                        </button>
                                     </th>
                                     <th className="px-4 py-3 font-semibold text-foreground min-w-[100px]">
-                                        Unidad
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSort('unit')}
+                                            className="flex items-center gap-1.5 hover:text-primary transition-colors group cursor-pointer text-left"
+                                            title="Ordenar por unidad"
+                                        >
+                                            <span>Unidad</span>
+                                            {renderSortIcon('unit')}
+                                        </button>
                                     </th>
                                     <th className="px-4 py-3 font-semibold text-foreground">
                                         Prerrequisitos
@@ -899,7 +1038,7 @@ export default function TopicsIndex({
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
-                                {filteredTopics.map((topic) => {
+                                {filteredAndSortedTopics.map((topic) => {
                                     const isGlobalMaster = Boolean(topic.is_global && !topic.institution_id);
                                     const isOwnInstitutional = Boolean(
                                         topic.institution_id &&

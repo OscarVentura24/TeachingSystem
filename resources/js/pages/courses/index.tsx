@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Head, Link, useForm, router } from '@inertiajs/react';
 import {
     Plus,
@@ -11,6 +11,11 @@ import {
     Building2,
     Pencil,
     Trash2,
+    Search,
+    ListFilter,
+    ArrowUpDown,
+    ArrowUp,
+    ArrowDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,11 +63,19 @@ interface Props {
     activeInstitution?: { id: number; name: string } | null;
 }
 
+type CourseSortField = 'name' | 'period' | 'students' | 'topics' | 'sessions' | 'institution';
+type CourseSortDirection = 'asc' | 'desc';
+
 export default function CoursesIndex({ courses, institutions, academicPeriods, activeInstitution }: Props) {
     const [openDialog, setOpenDialog] = useState(false);
     const [openEditDialog, setOpenEditDialog] = useState(false);
     const [editingCourse, setEditingCourse] = useState<CourseItem | null>(null);
     const [openPeriodDialog, setOpenPeriodDialog] = useState(false);
+
+    // Search & Multi-factor sorting state
+    const [search, setSearch] = useState('');
+    const [sortField, setSortField] = useState<CourseSortField>('name');
+    const [sortDirection, setSortDirection] = useState<CourseSortDirection>('asc');
 
     const defaultInstId = activeInstitution?.id || institutions[0]?.id || '';
 
@@ -151,6 +164,64 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
         label: inst.name,
     }));
 
+    const handleSortDropdownChange = (val: string) => {
+        const parts = val.split('_');
+        const dir = parts.pop() as CourseSortDirection;
+        const field = parts.join('_') as CourseSortField;
+        if (field && dir) {
+            setSortField(field);
+            setSortDirection(dir);
+        }
+    };
+
+    const filteredAndSortedCourses = useMemo(() => {
+        const query = search.trim().toLowerCase();
+        const filtered = courses.filter((c) => {
+            if (!query) return true;
+            return (
+                c.name.toLowerCase().includes(query) ||
+                (c.section && c.section.toLowerCase().includes(query)) ||
+                (c.code && c.code.toLowerCase().includes(query)) ||
+                (c.description && c.description.toLowerCase().includes(query)) ||
+                (c.institution && c.institution.name.toLowerCase().includes(query)) ||
+                (c.academic_period && c.academic_period.name.toLowerCase().includes(query))
+            );
+        });
+
+        return [...filtered].sort((a, b) => {
+            let comparison = 0;
+            switch (sortField) {
+                case 'name':
+                    comparison = a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
+                    break;
+                case 'period': {
+                    const periodA = a.academic_period?.name || '';
+                    const periodB = b.academic_period?.name || '';
+                    comparison = periodA.localeCompare(periodB, 'es', { sensitivity: 'base' });
+                    break;
+                }
+                case 'students':
+                    comparison = (a.students_count || 0) - (b.students_count || 0);
+                    break;
+                case 'topics':
+                    comparison = (a.course_topics_count || 0) - (b.course_topics_count || 0);
+                    break;
+                case 'sessions':
+                    comparison = (a.sessions_count || 0) - (b.sessions_count || 0);
+                    break;
+                case 'institution': {
+                    const instA = a.institution?.name || '';
+                    const instB = b.institution?.name || '';
+                    comparison = instA.localeCompare(instB, 'es', { sensitivity: 'base' });
+                    break;
+                }
+                default:
+                    comparison = 0;
+            }
+            return sortDirection === 'asc' ? comparison : -comparison;
+        });
+    }, [courses, search, sortField, sortDirection]);
+
     const periodOptions = [
         { value: '', label: 'Sin período específico' },
         ...academicPeriods.map((p) => ({
@@ -222,6 +293,7 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
                                         <Label htmlFor="period_name">Nombre del Período *</Label>
                                         <Input
                                             id="period_name"
+                                            autoFocus
                                             placeholder="Ej: 2026-II o Semestre 2026-B"
                                             value={periodForm.data.name}
                                             onChange={(e) => periodForm.setData('name', e.target.value)}
@@ -289,6 +361,7 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
                                         <Label htmlFor="name">Nombre del Curso *</Label>
                                         <Input
                                             id="name"
+                                            autoFocus
                                             placeholder="Ej: Programación I"
                                             value={createForm.data.name}
                                             onChange={(e) => createForm.setData('name', e.target.value)}
@@ -404,6 +477,7 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
                                         <Label htmlFor="edit_course_name">Nombre del Curso *</Label>
                                         <Input
                                             id="edit_course_name"
+                                            autoFocus
                                             value={editForm.data.name}
                                             onChange={(e) => editForm.setData('name', e.target.value)}
                                             required
@@ -472,6 +546,50 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
                     </div>
                 </div>
 
+                {/* Filters & Sorting */}
+                {courses.length > 0 && (
+                    <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+                        <div className="relative flex-1 sm:max-w-xs">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                autoFocus
+                                placeholder="Buscar curso por nombre, sección o código..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="pl-9 text-xs"
+                            />
+                        </div>
+
+                        <div className="flex items-center gap-2.5 self-end sm:self-auto">
+                            <div className="flex items-center gap-1.5">
+                                <ListFilter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                <span className="text-xs text-muted-foreground whitespace-nowrap hidden sm:inline">Ordenar por:</span>
+                                <select
+                                    value={`${sortField}_${sortDirection}`}
+                                    onChange={(e) => handleSortDropdownChange(e.target.value)}
+                                    className="h-8 rounded-lg border bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                >
+                                    <option value="name_asc">Nombre (A → Z)</option>
+                                    <option value="name_desc">Nombre (Z → A)</option>
+                                    <option value="period_asc">Período Académico (A → Z)</option>
+                                    <option value="period_desc">Período Académico (Z → A)</option>
+                                    <option value="students_desc">Alumnos (Más alumnos)</option>
+                                    <option value="students_asc">Alumnos (Menos alumnos)</option>
+                                    <option value="topics_desc">Temas (Pensum más amplio)</option>
+                                    <option value="topics_asc">Temas (Pensum menor)</option>
+                                    <option value="sessions_desc">Sesiones (Más sesiones)</option>
+                                    <option value="sessions_asc">Sesiones (Menos sesiones)</option>
+                                    <option value="institution_asc">Institución (A → Z)</option>
+                                </select>
+                            </div>
+
+                            <span className="text-[11px] text-muted-foreground bg-muted/60 px-2 py-1 rounded-md border border-border/40 whitespace-nowrap">
+                                {filteredAndSortedCourses.length} {filteredAndSortedCourses.length === 1 ? 'curso' : 'cursos'}
+                            </span>
+                        </div>
+                    </div>
+                )}
+
                 {courses.length === 0 ? (
                     <div className="rounded-2xl border border-dashed p-12 text-center">
                         <GraduationCap className="mx-auto h-12 w-12 text-muted-foreground/50" />
@@ -483,9 +601,15 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
                             <Plus className="h-4 w-4" /> Crear Primer Curso
                         </Button>
                     </div>
+                ) : filteredAndSortedCourses.length === 0 ? (
+                    <div className="rounded-xl border border-dashed p-12 text-center text-muted-foreground">
+                        <GraduationCap className="mx-auto h-10 w-10 text-muted-foreground/40 mb-2" />
+                        <p className="font-medium">No se encontraron cursos con los filtros actuales.</p>
+                        <p className="text-xs mt-1">Prueba cambiando los términos de búsqueda o el criterio de orden.</p>
+                    </div>
                 ) : (
                     <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                        {courses.map((course) => (
+                        {filteredAndSortedCourses.map((course) => (
                             <div
                                 key={course.id}
                                 className="group relative flex flex-col justify-between rounded-xl border bg-card p-6 shadow-sm hover:shadow-md transition-all"

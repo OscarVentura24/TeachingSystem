@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Head, useForm, router } from '@inertiajs/react';
-import { Plus, BookMarked, Layers, Search, Pencil, Trash2, Building2 } from 'lucide-react';
+import { Plus, BookMarked, Layers, Search, Pencil, Trash2, Building2, ListFilter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,10 +26,15 @@ interface Props {
     isGlobalMode?: boolean;
 }
 
+type SubjectSortField = 'name' | 'code' | 'topics_count';
+type SubjectSortDirection = 'asc' | 'desc';
+
 export default function SubjectsIndex({ subjects, isGlobalMode = false }: Props) {
     const [openCreateDialog, setOpenCreateDialog] = useState(false);
     const [editingSubject, setEditingSubject] = useState<SubjectItem | null>(null);
     const [search, setSearch] = useState('');
+    const [sortField, setSortField] = useState<SubjectSortField>('name');
+    const [sortDirection, setSortDirection] = useState<SubjectSortDirection>('asc');
 
     const createForm = useForm({
         name: '',
@@ -43,14 +48,48 @@ export default function SubjectsIndex({ subjects, isGlobalMode = false }: Props)
         description: '',
     });
 
-    const filteredSubjects = subjects.filter((s) => {
-        const query = search.toLowerCase();
-        return (
-            s.name.toLowerCase().includes(query) ||
-            (s.code && s.code.toLowerCase().includes(query)) ||
-            (s.description && s.description.toLowerCase().includes(query))
-        );
-    });
+    const handleSortDropdownChange = (val: string) => {
+        const parts = val.split('_');
+        const dir = parts.pop() as SubjectSortDirection;
+        const field = parts.join('_') as SubjectSortField;
+        if (field && dir) {
+            setSortField(field);
+            setSortDirection(dir);
+        }
+    };
+
+    const filteredAndSortedSubjects = useMemo(() => {
+        const query = search.trim().toLowerCase();
+        const filtered = subjects.filter((s) => {
+            if (!query) return true;
+            return (
+                s.name.toLowerCase().includes(query) ||
+                (s.code && s.code.toLowerCase().includes(query)) ||
+                (s.description && s.description.toLowerCase().includes(query))
+            );
+        });
+
+        return [...filtered].sort((a, b) => {
+            let comparison = 0;
+            switch (sortField) {
+                case 'name':
+                    comparison = a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
+                    break;
+                case 'code': {
+                    const codeA = a.code || '';
+                    const codeB = b.code || '';
+                    comparison = codeA.localeCompare(codeB, 'es', { sensitivity: 'base' });
+                    break;
+                }
+                case 'topics_count':
+                    comparison = (a.topics_count || 0) - (b.topics_count || 0);
+                    break;
+                default:
+                    comparison = 0;
+            }
+            return sortDirection === 'asc' ? comparison : -comparison;
+        });
+    }, [subjects, search, sortField, sortDirection]);
 
     const handleCreateSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -142,6 +181,7 @@ export default function SubjectsIndex({ subjects, isGlobalMode = false }: Props)
                                         <Label htmlFor="create_name">Nombre de la Asignatura *</Label>
                                         <Input
                                             id="create_name"
+                                            autoFocus
                                             placeholder="Ej: Programación Web"
                                             value={createForm.data.name}
                                             onChange={(e) => createForm.setData('name', e.target.value)}
@@ -206,6 +246,7 @@ export default function SubjectsIndex({ subjects, isGlobalMode = false }: Props)
                                     <Label htmlFor="edit_name">Nombre de la Asignatura *</Label>
                                     <Input
                                         id="edit_name"
+                                        autoFocus
                                         value={editForm.data.name}
                                         onChange={(e) => editForm.setData('name', e.target.value)}
                                         required
@@ -250,18 +291,37 @@ export default function SubjectsIndex({ subjects, isGlobalMode = false }: Props)
                     </Dialog>
                 )}
 
-                {/* Search Bar */}
-                <div className="relative w-full sm:w-80">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        placeholder="Buscar por nombre o código..."
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className="pl-9 text-xs"
-                    />
+                {/* Search & Sort Bar */}
+                <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+                    <div className="relative w-full sm:w-80">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            autoFocus
+                            placeholder="Buscar por nombre o código..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            className="pl-9 text-xs"
+                        />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <ListFilter className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">Ordenar por:</span>
+                        <select
+                            value={`${sortField}_${sortDirection}`}
+                            onChange={(e) => handleSortDropdownChange(e.target.value)}
+                            className="h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+                        >
+                            <option value="name_asc">Nombre (A - Z)</option>
+                            <option value="name_desc">Nombre (Z - A)</option>
+                            <option value="code_asc">Código (A - Z)</option>
+                            <option value="topics_count_desc">Más temas primero</option>
+                            <option value="topics_count_asc">Menos temas primero</option>
+                        </select>
+                    </div>
                 </div>
 
-                {filteredSubjects.length === 0 ? (
+                {filteredAndSortedSubjects.length === 0 ? (
                     <div className="rounded-2xl border border-dashed p-12 text-center text-muted-foreground">
                         <BookMarked className="mx-auto h-12 w-12 text-muted-foreground/40 mb-3" />
                         <h3 className="text-base font-semibold text-foreground">No se encontraron asignaturas</h3>
@@ -274,7 +334,7 @@ export default function SubjectsIndex({ subjects, isGlobalMode = false }: Props)
                     </div>
                 ) : (
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        {filteredSubjects.map((subject) => (
+                        {filteredAndSortedSubjects.map((subject) => (
                             <div
                                 key={subject.id}
                                 className="group relative flex flex-col justify-between rounded-xl border bg-card p-5 shadow-xs hover:border-primary/40 transition-colors"

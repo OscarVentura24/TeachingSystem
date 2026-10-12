@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Head, useForm, router } from '@inertiajs/react';
 import {
     Users,
@@ -15,6 +15,7 @@ import {
     UserCheck,
     UserX,
     Building2,
+    ListFilter,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -68,11 +69,16 @@ interface Props {
     activeInstitution?: { id: number; name: string } | null;
 }
 
+type TeacherSortField = 'name' | 'role' | 'courses' | 'sessions' | 'status' | 'institution';
+type TeacherSortDirection = 'asc' | 'desc';
+
 export default function TeachersIndex({ teachers, institutions, courses, activeInstitution }: Props) {
     const [openCreateDialog, setOpenCreateDialog] = useState(false);
     const [editingTeacher, setEditingTeacher] = useState<TeacherItem | null>(null);
     const [search, setSearch] = useState('');
     const [roleFilter, setRoleFilter] = useState<'all' | 'teacher' | 'admin'>('all');
+    const [sortField, setSortField] = useState<TeacherSortField>('name');
+    const [sortDirection, setSortDirection] = useState<TeacherSortDirection>('asc');
 
     const defaultInstId = activeInstitution?.id || (institutions.length > 0 ? institutions[0].id : '');
 
@@ -95,18 +101,63 @@ export default function TeachersIndex({ teachers, institutions, courses, activeI
         course_ids: [] as number[],
     });
 
-    const filteredTeachers = teachers.filter((t) => {
-        const query = search.toLowerCase();
-        const matchesQuery =
-            t.name.toLowerCase().includes(query) ||
-            t.email.toLowerCase().includes(query) ||
-            (t.institution_name && t.institution_name.toLowerCase().includes(query)) ||
-            t.courses.some((c) => c.name.toLowerCase().includes(query));
+    const handleSortDropdownChange = (val: string) => {
+        const parts = val.split('_');
+        const dir = parts.pop() as TeacherSortDirection;
+        const field = parts.join('_') as TeacherSortField;
+        if (field && dir) {
+            setSortField(field);
+            setSortDirection(dir);
+        }
+    };
 
-        if (!matchesQuery) return false;
-        if (roleFilter === 'all') return true;
-        return t.role === roleFilter;
-    });
+    const filteredAndSortedTeachers = useMemo(() => {
+        const query = search.trim().toLowerCase();
+        const filtered = teachers.filter((t) => {
+            const matchesQuery =
+                !query ||
+                t.name.toLowerCase().includes(query) ||
+                t.email.toLowerCase().includes(query) ||
+                (t.institution_name && t.institution_name.toLowerCase().includes(query)) ||
+                t.courses.some((c) => c.name.toLowerCase().includes(query));
+
+            if (!matchesQuery) return false;
+            if (roleFilter === 'all') return true;
+            return t.role === roleFilter;
+        });
+
+        return [...filtered].sort((a, b) => {
+            let comparison = 0;
+            switch (sortField) {
+                case 'name':
+                    comparison = a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
+                    break;
+                case 'role': {
+                    const roleWeight = (role: string) => (role === 'admin' ? 2 : 1);
+                    comparison = roleWeight(a.role) - roleWeight(b.role);
+                    break;
+                }
+                case 'courses':
+                    comparison = a.courses.length - b.courses.length;
+                    break;
+                case 'sessions':
+                    comparison = (a.sessions_count || 0) - (b.sessions_count || 0);
+                    break;
+                case 'status':
+                    comparison = (a.is_active ? 1 : 0) - (b.is_active ? 1 : 0);
+                    break;
+                case 'institution': {
+                    const instA = a.institution_name || '';
+                    const instB = b.institution_name || '';
+                    comparison = instA.localeCompare(instB, 'es', { sensitivity: 'base' });
+                    break;
+                }
+                default:
+                    comparison = 0;
+            }
+            return sortDirection === 'asc' ? comparison : -comparison;
+        });
+    }, [teachers, search, roleFilter, sortField, sortDirection]);
 
     // Counts
     const totalTeachers = teachers.length;
@@ -212,6 +263,7 @@ export default function TeachersIndex({ teachers, institutions, courses, activeI
                                     <Label htmlFor="teacher_name">Nombre Completo *</Label>
                                     <Input
                                         id="teacher_name"
+                                        autoFocus
                                         value={createForm.data.name}
                                         onChange={(e) => createForm.setData('name', e.target.value)}
                                         placeholder="Ej: Lic. Mariana Ramos"
@@ -405,11 +457,12 @@ export default function TeachersIndex({ teachers, institutions, courses, activeI
                     </div>
                 </div>
 
-                {/* Filters */}
-                <div className="flex flex-col sm:flex-row items-center gap-3">
+                {/* Filters & Sorting */}
+                <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
                     <div className="relative flex-1 w-full">
                         <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
+                            autoFocus
                             placeholder="Buscar docente por nombre, correo, institución o curso..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
@@ -417,33 +470,61 @@ export default function TeachersIndex({ teachers, institutions, courses, activeI
                         />
                     </div>
 
-                    <div className="flex items-center gap-1.5 self-start sm:self-auto">
-                        <Button
-                            variant={roleFilter === 'all' ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setRoleFilter('all')}
-                        >
-                            Todos
-                        </Button>
-                        <Button
-                            variant={roleFilter === 'teacher' ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setRoleFilter('teacher')}
-                        >
-                            Docentes
-                        </Button>
-                        <Button
-                            variant={roleFilter === 'admin' ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setRoleFilter('admin')}
-                        >
-                            Administradores
-                        </Button>
+                    <div className="flex flex-wrap items-center gap-2.5 self-end lg:self-auto">
+                        <div className="flex items-center gap-1">
+                            <Button
+                                variant={roleFilter === 'all' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setRoleFilter('all')}
+                            >
+                                Todos
+                            </Button>
+                            <Button
+                                variant={roleFilter === 'teacher' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setRoleFilter('teacher')}
+                            >
+                                Docentes
+                            </Button>
+                            <Button
+                                variant={roleFilter === 'admin' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setRoleFilter('admin')}
+                            >
+                                Administradores
+                            </Button>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                            <ListFilter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span className="text-xs text-muted-foreground whitespace-nowrap hidden sm:inline">Ordenar por:</span>
+                            <select
+                                value={`${sortField}_${sortDirection}`}
+                                onChange={(e) => handleSortDropdownChange(e.target.value)}
+                                className="h-9 rounded-lg border bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            >
+                                <option value="name_asc">Nombre (A → Z)</option>
+                                <option value="name_desc">Nombre (Z → A)</option>
+                                <option value="role_desc">Rol (Admins primero)</option>
+                                <option value="role_asc">Rol (Docentes primero)</option>
+                                <option value="courses_desc">Cursos (Más asignados)</option>
+                                <option value="courses_asc">Cursos (Menos asignados)</option>
+                                <option value="sessions_desc">Sesiones (Más dictadas)</option>
+                                <option value="sessions_asc">Sesiones (Menos dictadas)</option>
+                                <option value="status_desc">Estado (Activos primero)</option>
+                                <option value="status_asc">Estado (Inactivos primero)</option>
+                                <option value="institution_asc">Institución (A → Z)</option>
+                            </select>
+                        </div>
+
+                        <span className="text-[11px] text-muted-foreground bg-muted/60 px-2 py-1.5 rounded-md border border-border/40 whitespace-nowrap">
+                            {filteredAndSortedTeachers.length} {filteredAndSortedTeachers.length === 1 ? 'docente' : 'docentes'}
+                        </span>
                     </div>
                 </div>
 
                 {/* Teachers List */}
-                {filteredTeachers.length === 0 ? (
+                {filteredAndSortedTeachers.length === 0 ? (
                     <div className="flex flex-col items-center justify-center p-12 text-center border rounded-lg border-dashed bg-muted/10">
                         <Users className="h-10 w-10 text-muted-foreground/60 mb-3" />
                         <h3 className="font-semibold text-lg text-foreground">No se encontraron docentes</h3>
@@ -455,7 +536,7 @@ export default function TeachersIndex({ teachers, institutions, courses, activeI
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {filteredTeachers.map((teacher) => {
+                        {filteredAndSortedTeachers.map((teacher) => {
                             const initials = teacher.name
                                 .split(' ')
                                 .map((n) => n[0])
@@ -589,6 +670,7 @@ export default function TeachersIndex({ teachers, institutions, courses, activeI
                                 <Label htmlFor="edit_teacher_name">Nombre Completo *</Label>
                                 <Input
                                     id="edit_teacher_name"
+                                    autoFocus
                                     value={editForm.data.name}
                                     onChange={(e) => editForm.setData('name', e.target.value)}
                                     required
