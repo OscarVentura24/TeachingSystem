@@ -373,7 +373,7 @@ export default function TopicsIndex({
 
     return (
         <>
-            <Head title="Banco de Temas - TeachingSystem" />
+            <Head title="Banco de Temas - H2O Teaching System" />
 
             <div className="flex flex-1 flex-col gap-6 p-6">
                 {/* Header */}

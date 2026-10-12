@@ -1,12 +1,75 @@
 import type { SVGAttributes } from 'react';
 
-export default function AppLogoIcon(props: SVGAttributes<SVGElement>) {
+export default function AppLogoIcon({ className, ...props }: SVGAttributes<SVGElement>) {
     return (
-        <svg {...props} viewBox="0 0 40 42" xmlns="http://www.w3.org/2000/svg">
+        <svg
+            viewBox="0 0 48 48"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            className={className}
+            {...props}
+        >
+            {/* Water Droplet Silhouette */}
             <path
-                fillRule="evenodd"
-                clipRule="evenodd"
-                d="M17.2 5.63325L8.6 0.855469L0 5.63325V32.1434L16.2 41.1434L32.4 32.1434V23.699L40 19.4767V9.85547L31.4 5.07769L22.8 9.85547V18.2999L17.2 21.411V5.63325ZM38 18.2999L32.4 21.411V15.2545L38 12.1434V18.2999ZM36.9409 10.4439L31.4 13.5221L25.8591 10.4439L31.4 7.36561L36.9409 10.4439ZM24.8 18.2999V12.1434L30.4 15.2545V21.411L24.8 18.2999ZM23.8 20.0323L29.3409 23.1105L16.2 30.411L10.6591 27.3328L23.8 20.0323ZM7.6 27.9212L15.2 32.1434V38.2999L2 30.9666V7.92116L7.6 11.0323V27.9212ZM8.6 9.29991L3.05913 6.22165L8.6 3.14339L14.1409 6.22165L8.6 9.29991ZM30.4 24.8101L17.2 32.1434V38.2999L30.4 30.9666V24.8101ZM9.6 11.0323L15.2 7.92117V22.5221L9.6 25.6333V11.0323Z"
+                d="M24 3C24 3 8 20 8 30C8 38.5 15.2 45 24 45C32.8 45 40 38.5 40 30C40 20 24 3 24 3Z"
+                fill="currentColor"
+                fillOpacity="0.14"
+            />
+            <path
+                d="M24 3C24 3 8 20 8 30C8 38.5 15.2 45 24 45C32.8 45 40 38.5 40 30C40 20 24 3 24 3Z"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+
+            {/* Droplet Light Accent */}
+            <path
+                d="M24 7C24 7 13 21 13 29C13 32 14.5 35 16.5 37"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeOpacity="0.5"
+            />
+
+            {/* Mortarboard Diamond (Cap) */}
+            <path
+                d="M24 14L36 20.5L24 27L12 20.5L24 14Z"
+                fill="currentColor"
+            />
+
+            {/* Mortarboard Skullcap Arch */}
+            <path
+                d="M17 23V27.5C17 30 20.1 32 24 32C27.9 32 31 30 31 27.5V23"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+
+            {/* Tassel */}
+            <path
+                d="M33 22V29M31.8 29H34.2"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+            />
+
+            {/* Open Book Pages at Base */}
+            <path
+                d="M11 39C15 37 19.5 37.5 24 40C28.5 37.5 33 37 37 39"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+            <path
+                d="M11 42C15 40 19.5 40.5 24 43C28.5 40.5 33 40 37 42"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeOpacity="0.6"
             />
         </svg>
     );

@@ -134,7 +134,7 @@ export default function SubjectsIndex({ subjects, isGlobalMode = false }: Props)
 
     return (
         <>
-            <Head title="Asignaturas - TeachingSystem" />
+            <Head title="Asignaturas - H2O Teaching System" />
 
             <div className="flex flex-1 flex-col gap-6 p-6">
                 {!isGlobalMode && (

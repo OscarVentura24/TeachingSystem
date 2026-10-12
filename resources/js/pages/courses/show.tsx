@@ -246,7 +246,7 @@ export default function CourseShow({
 
     return (
         <>
-            <Head title={`${course.name} - TeachingSystem`} />
+            <Head title={`${course.name} - H2O Teaching System`} />
 
             <div className="flex flex-1 flex-col gap-6 p-6">
                 {/* Header */}

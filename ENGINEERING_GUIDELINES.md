@@ -67,10 +67,10 @@
 
 ---
 
-## 9. Especificaciones del Proyecto: TeachingSystem
+## 9. Especificaciones del Proyecto: H2O Teaching System
 
 ### 9.1 Visión General
-**TeachingSystem** es una herramienta de gestión pedagógica orientada a docentes e instituciones educativas para planificar, registrar y supervisar el avance de temas dictados, adaptándose a restricciones físicas reales (ej. aulas/laboratorios de computación con capacidad de equipos limitada frente al total de estudiantes).
+**H2O Teaching System** es una herramienta de gestión pedagógica orientada a docentes e instituciones educativas para planificar, registrar y supervisar el avance de temas dictados, adaptándose a restricciones físicas reales (ej. aulas/laboratorios de computación con capacidad de equipos limitada frente al total de estudiantes).
 
 ---
 

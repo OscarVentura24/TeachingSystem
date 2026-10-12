@@ -222,7 +222,7 @@ export default function TeachersIndex({ teachers, institutions, courses, activeI
 
     return (
         <>
-            <Head title="Docentes y Permisos - TeachingSystem" />
+            <Head title="Docentes y Permisos - H2O Teaching System" />
 
             <div className="flex flex-1 flex-col gap-6 p-6">
                 {/* Header */}

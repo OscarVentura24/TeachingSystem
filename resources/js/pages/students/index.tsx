@@ -386,7 +386,7 @@ export default function StudentsIndex({
 
     return (
         <>
-            <Head title="Padrón de Estudiantes - TeachingSystem" />
+            <Head title="Padrón de Estudiantes - H2O Teaching System" />
 
             <div className="flex flex-1 flex-col gap-6 p-6">
                 {/* Header */}

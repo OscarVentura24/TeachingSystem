@@ -18,6 +18,7 @@ import {
     School,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import AppLogoIcon from '@/components/app-logo-icon';
 import { dashboard, login } from '@/routes';
 
 export default function Welcome() {
@@ -25,19 +26,19 @@ export default function Welcome() {
 
     return (
         <>
-            <Head title="TeachingSystem - Plataforma de Gestión Docente y Acompañamiento en Laboratorio" />
+            <Head title="H2O Teaching System - Plataforma de Gestión Docente y Acompañamiento en Laboratorio" />
 
             <div className="min-h-screen bg-background text-foreground flex flex-col selection:bg-primary/20 selection:text-primary">
                 {/* 1. Header / Navigation */}
                 <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-md">
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center shadow-sm">
-                                <GraduationCap className="h-5 w-5" />
+                            <div className="w-10 h-10 rounded-xl bg-sky-600 dark:bg-sky-500 text-white flex items-center justify-center shadow-xs">
+                                <AppLogoIcon className="h-6 w-6 text-white" />
                             </div>
                             <div>
                                 <span className="font-bold text-lg tracking-tight text-foreground block leading-none">
-                                    TeachingSystem
+                                    H2O <span className="text-sky-600 dark:text-sky-400">Teaching System</span>
                                 </span>
                                 <span className="text-[11px] text-muted-foreground font-mono">
                                     v2.0 • EdTech & Lab Suite
@@ -328,7 +329,7 @@ export default function Welcome() {
                                 <Link href={login()}>
                                     <Button size="lg" className="gap-2.5 font-semibold shadow-md px-9 h-12 text-base">
                                         <LogIn className="h-5 w-5" />
-                                        <span>Iniciar Sesión en TeachingSystem</span>
+                                        <span>Iniciar Sesión en H2O Teaching System</span>
                                     </Button>
                                 </Link>
                             )}
@@ -340,8 +341,8 @@ export default function Welcome() {
                 <footer className="border-t py-6 bg-background">
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
                         <div className="flex items-center gap-2">
-                            <GraduationCap className="h-4 w-4 text-primary" />
-                            <span>TeachingSystem © {new Date().getFullYear()} — Plataforma de Gestión Académica</span>
+                            <AppLogoIcon className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                            <span>H2O Teaching System © {new Date().getFullYear()} — Plataforma de Gestión Académica</span>
                         </div>
                         <div className="flex items-center gap-4">
                             <span>Base de Datos PostgreSQL</span>
