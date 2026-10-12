@@ -28,6 +28,8 @@ interface CourseTopic {
     title: string;
     unit_title?: string;
     sort_order: number;
+    parent_id?: number | null;
+    subtopics?: CourseTopic[];
 }
 
 interface Course {
@@ -140,11 +142,32 @@ export default function SessionCreate({ course, students, courseTopics }: Props)
         );
     };
 
+    const toggleTopicGroup = (topic: CourseTopic) => {
+        if (!topic.subtopics || topic.subtopics.length === 0) {
+            toggleTopic(topic.id);
+            return;
+        }
+
+        const subIds = topic.subtopics.map((s) => s.id);
+        const allSubSelected = subIds.every((id) => selectedTopicIds.includes(id));
+
+        if (allSubSelected) {
+            setSelectedTopicIds((prev) => prev.filter((id) => id !== topic.id && !subIds.includes(id)));
+        } else {
+            setSelectedTopicIds((prev) => Array.from(new Set([...prev, topic.id, ...subIds])));
+        }
+    };
+
     const applySuggestedTopic = () => {
         if (suggestion?.primary_recommendation?.course_topic_id) {
             const topicId = suggestion.primary_recommendation.course_topic_id;
-            if (!selectedTopicIds.includes(topicId)) {
-                setSelectedTopicIds([topicId]);
+            const parentTopic = courseTopics.find((t) => t.id === topicId);
+            if (parentTopic && parentTopic.subtopics && parentTopic.subtopics.length > 0) {
+                setSelectedTopicIds((prev) => Array.from(new Set([...prev, topicId, ...parentTopic.subtopics!.map((s) => s.id)])));
+            } else {
+                if (!selectedTopicIds.includes(topicId)) {
+                    setSelectedTopicIds((prev) => [...prev, topicId]);
+                }
             }
         }
     };
@@ -363,34 +386,77 @@ export default function SessionCreate({ course, students, courseTopics }: Props)
                                     El pensum no tiene temas configurados.
                                 </div>
                             ) : (
-                                <div className="divide-y rounded-xl border bg-card max-h-[300px] overflow-y-auto">
+                                <div className="divide-y rounded-xl border bg-card max-h-[340px] overflow-y-auto">
                                     {courseTopics.map((topic, index) => {
-                                        const isSelected = selectedTopicIds.includes(topic.id);
+                                        const hasSubtopics = topic.subtopics && topic.subtopics.length > 0;
+                                        const isTopicSelected = selectedTopicIds.includes(topic.id);
+                                        const subIds = hasSubtopics ? topic.subtopics!.map((s) => s.id) : [];
+                                        const allSubSelected = hasSubtopics && subIds.every((id) => selectedTopicIds.includes(id));
+                                        const someSubSelected = hasSubtopics && subIds.some((id) => selectedTopicIds.includes(id));
+                                        const isChecked = hasSubtopics ? allSubSelected : isTopicSelected;
 
                                         return (
-                                            <label
-                                                key={topic.id}
-                                                className={`flex items-start gap-3 p-3 cursor-pointer transition-colors ${
-                                                    isSelected ? 'bg-primary/5' : 'hover:bg-muted/30'
-                                                }`}
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isSelected}
-                                                    onChange={() => toggleTopic(topic.id)}
-                                                    className="mt-0.5 h-4 w-4 rounded text-primary border-muted-foreground"
-                                                />
-                                                <div>
-                                                    <span className="text-xs font-semibold text-foreground block">
-                                                        {index + 1}. {topic.title}
-                                                    </span>
-                                                    {topic.unit_title && (
-                                                        <span className="text-[10px] text-muted-foreground block">
-                                                            {topic.unit_title}
-                                                        </span>
-                                                    )}
+                                            <div key={topic.id} className="p-3">
+                                                <div className="flex items-start gap-3">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isChecked}
+                                                        ref={(el) => {
+                                                            if (el && hasSubtopics) {
+                                                                el.indeterminate = someSubSelected && !allSubSelected;
+                                                            }
+                                                        }}
+                                                        onChange={() => toggleTopicGroup(topic)}
+                                                        className="mt-0.5 h-4 w-4 rounded text-primary border-muted-foreground cursor-pointer"
+                                                    />
+                                                    <div className="flex-1 cursor-pointer" onClick={() => toggleTopicGroup(topic)}>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs font-semibold text-foreground">
+                                                                {index + 1}. {topic.title}
+                                                            </span>
+                                                            {hasSubtopics && (
+                                                                <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground font-mono">
+                                                                    {topic.subtopics!.length} subtemas
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {topic.unit_title && (
+                                                            <span className="text-[10px] text-muted-foreground block">
+                                                                {topic.unit_title}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </label>
+
+                                                {hasSubtopics && (
+                                                    <div className="mt-2 ml-7 pl-3 border-l-2 border-border/60 space-y-1.5">
+                                                        {topic.subtopics!.map((sub, sIdx) => {
+                                                            const isSubSelected = selectedTopicIds.includes(sub.id);
+                                                            return (
+                                                                <label
+                                                                    key={sub.id}
+                                                                    className={`flex items-center gap-2.5 py-1 px-2 rounded cursor-pointer transition-colors ${
+                                                                        isSubSelected ? 'bg-primary/10' : 'hover:bg-muted/40'
+                                                                    }`}
+                                                                >
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={isSubSelected}
+                                                                        onChange={() => toggleTopic(sub.id)}
+                                                                        className="h-3.5 w-3.5 rounded text-primary border-muted-foreground cursor-pointer"
+                                                                    />
+                                                                    <span className="text-xs text-foreground">
+                                                                        <span className="text-muted-foreground font-mono text-[10px] mr-1.5">
+                                                                            {index + 1}.{sIdx + 1}
+                                                                        </span>
+                                                                        {sub.title}
+                                                                    </span>
+                                                                </label>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
                                         );
                                     })}
                                 </div>

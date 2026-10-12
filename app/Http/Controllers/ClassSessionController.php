@@ -33,7 +33,11 @@ class ClassSessionController extends Controller
             'students' => function ($query) {
                 $query->orderBy('last_name')->orderBy('first_name');
             },
-            'courseTopics',
+            'courseTopics' => function ($query) {
+                $query->whereNull('parent_id')
+                    ->orderBy('sort_order')
+                    ->with('subtopics');
+            },
         ]);
 
         return Inertia::render('sessions/create', [

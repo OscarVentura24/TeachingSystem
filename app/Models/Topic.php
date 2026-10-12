@@ -17,6 +17,7 @@ class Topic extends Model
         'institution_id',
         'source_topic_id',
         'subject_id',
+        'parent_id',
         'title',
         'area',
         'unit_title',
@@ -56,6 +57,21 @@ class Topic extends Model
     public function subject(): BelongsTo
     {
         return $this->belongsTo(Subject::class);
+    }
+
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(Topic::class, 'parent_id');
+    }
+
+    public function subtopics(): HasMany
+    {
+        return $this->hasMany(Topic::class, 'parent_id')->orderBy('id');
+    }
+
+    public function isSubtopic(): bool
+    {
+        return $this->parent_id !== null;
     }
 
     public function creator(): BelongsTo

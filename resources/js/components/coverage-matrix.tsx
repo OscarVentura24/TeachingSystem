@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { CheckCircle2, AlertTriangle, Circle, Search } from 'lucide-react';
 
 interface Student {
@@ -15,6 +15,8 @@ interface CourseTopic {
     title: string;
     unit_title?: string;
     sort_order: number;
+    parent_id?: number | null;
+    subtopics?: CourseTopic[];
 }
 
 interface ProgressRecord {
@@ -62,6 +64,41 @@ export function CoverageMatrix({ students, topics, progressByStudent }: Props) {
         );
     }
 
+    interface EvaluableTopic {
+        id: number;
+        shortLabel: string;
+        title: string;
+        parentTitle?: string;
+        fullLabel: string;
+    }
+
+    const evaluableTopics = useMemo<EvaluableTopic[]>(() => {
+        const list: EvaluableTopic[] = [];
+        topics.forEach((t, tIdx) => {
+            if (t.subtopics && t.subtopics.length > 0) {
+                t.subtopics.forEach((sub, sIdx) => {
+                    list.push({
+                        id: sub.id,
+                        shortLabel: `T${tIdx + 1}.${sIdx + 1}`,
+                        title: sub.title,
+                        parentTitle: t.title,
+                        fullLabel: `${t.title} > ${sub.title}`,
+                    });
+                });
+            } else {
+                list.push({
+                    id: t.id,
+                    shortLabel: `T${tIdx + 1}`,
+                    title: t.title,
+                    fullLabel: t.title,
+                });
+            }
+        });
+        return list;
+    }, [topics]);
+
+    const evaluableIdSet = useMemo(() => new Set(evaluableTopics.map((e) => e.id)), [evaluableTopics]);
+
     // Helper to get progress for a specific student and topic
     const getStudentTopicProgress = (studentId: number, topicId: number): ProgressRecord | undefined => {
         const studentRecords = progressByStudent[studentId] || [];
@@ -104,17 +141,24 @@ export function CoverageMatrix({ students, topics, progressByStudent }: Props) {
                             <th className="px-3 py-3 font-medium text-center text-muted-foreground min-w-[80px]">
                                 % Avance
                             </th>
-                            {topics.map((topic, idx) => (
+                            {evaluableTopics.map((item) => (
                                 <th
-                                    key={topic.id}
+                                    key={item.id}
                                     className="px-3 py-3 font-medium text-foreground max-w-[160px] truncate"
-                                    title={`Tema ${idx + 1}: ${topic.title}`}
+                                    title={item.fullLabel}
                                 >
-                                    <span className="text-[10px] uppercase text-muted-foreground block">
-                                        T{idx + 1}
-                                    </span>
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-[10px] uppercase text-muted-foreground font-mono block">
+                                            {item.shortLabel}
+                                        </span>
+                                        {item.parentTitle && (
+                                            <span className="text-[9px] text-muted-foreground/70 truncate block" title={item.parentTitle}>
+                                                ({item.parentTitle})
+                                            </span>
+                                        )}
+                                    </div>
                                     <span className="truncate block font-medium">
-                                        {topic.title}
+                                        {item.title}
                                     </span>
                                 </th>
                             ))}
@@ -123,8 +167,8 @@ export function CoverageMatrix({ students, topics, progressByStudent }: Props) {
                     <tbody className="divide-y divide-border">
                         {filteredStudents.map((student) => {
                             const studentRecords = progressByStudent[student.id] || [];
-                            const completedCount = studentRecords.filter((r) => r.coverage_status === 'explained').length;
-                            const percentage = Math.round((completedCount / topics.length) * 100);
+                            const completedCount = studentRecords.filter((r) => evaluableIdSet.has(r.course_topic_id) && r.coverage_status === 'explained').length;
+                            const percentage = evaluableTopics.length > 0 ? Math.round((completedCount / evaluableTopics.length) * 100) : 0;
 
                             return (
                                 <tr key={student.id} className="hover:bg-muted/30 transition-colors">
@@ -149,12 +193,12 @@ export function CoverageMatrix({ students, topics, progressByStudent }: Props) {
                                             {percentage}%
                                         </span>
                                     </td>
-                                    {topics.map((topic) => {
-                                        const progress = getStudentTopicProgress(student.id, topic.id);
+                                    {evaluableTopics.map((item) => {
+                                        const progress = getStudentTopicProgress(student.id, item.id);
 
                                         if (!progress) {
                                             return (
-                                                <td key={topic.id} className="px-3 py-2.5 text-center">
+                                                <td key={item.id} className="px-3 py-2.5 text-center">
                                                     <Circle className="h-4 w-4 mx-auto text-muted-foreground/30" />
                                                 </td>
                                             );
@@ -162,7 +206,7 @@ export function CoverageMatrix({ students, topics, progressByStudent }: Props) {
 
                                         if (progress.mastery_level === 'needs_reinforcement') {
                                             return (
-                                                <td key={topic.id} className="px-3 py-2.5 text-center bg-amber-500/10">
+                                                <td key={item.id} className="px-3 py-2.5 text-center bg-amber-500/10">
                                                     <AlertTriangle
                                                         className="h-4 w-4 mx-auto text-amber-600 dark:text-amber-400"
                                                         title="Explicado (Requiere Refuerzo)"
@@ -172,7 +216,7 @@ export function CoverageMatrix({ students, topics, progressByStudent }: Props) {
                                         }
 
                                         return (
-                                            <td key={topic.id} className="px-3 py-2.5 text-center bg-emerald-500/10">
+                                            <td key={item.id} className="px-3 py-2.5 text-center bg-emerald-500/10">
                                                 <CheckCircle2
                                                     className="h-4 w-4 mx-auto text-emerald-600 dark:text-emerald-400"
                                                     title={progress.mastery_level === 'mastered' ? 'Dominado' : 'Explicado'}

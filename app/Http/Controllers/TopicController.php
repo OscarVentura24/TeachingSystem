@@ -26,19 +26,29 @@ class TopicController extends Controller
         $activeInstitutionId = $this->contextService->getActiveInstitutionId($request);
         $user = $request->user();
 
+        // Load root topics with subtopics eager loaded
+        $topicsQuery = Topic::whereNull('parent_id')
+            ->with([
+                'prerequisites',
+                'subject',
+                'institution',
+                'sourceTopic',
+                'subtopics.prerequisites',
+                'subtopics.subject',
+                'subtopics.institution',
+            ]);
+
         if ($isGlobalMode) {
             // Super Admin in Global Platform can see all topics (global + institutional proposals)
-            $topics = Topic::with(['prerequisites', 'subject', 'institution', 'sourceTopic'])
-                ->orderBy('area')
+            $topics = $topicsQuery->orderBy('area')
                 ->orderBy('title')
                 ->get();
         } else {
             // Institutional Mode: show global topics + this specific institution's topics
-            $topics = Topic::where(function ($q) use ($activeInstitutionId) {
+            $topics = $topicsQuery->where(function ($q) use ($activeInstitutionId) {
                     $q->where('is_global', true)
                       ->orWhere('institution_id', $activeInstitutionId);
                 })
-                ->with(['prerequisites', 'subject', 'institution', 'sourceTopic'])
                 ->orderBy('area')
                 ->orderBy('title')
                 ->get();
@@ -46,11 +56,22 @@ class TopicController extends Controller
 
         // Global suggestions available for institutions to clone/link into their bank
         $globalSuggestions = Topic::where('is_global', true)
+            ->whereNull('parent_id')
             ->where('is_active', true)
-            ->with(['subject', 'prerequisites'])
+            ->with(['subject', 'prerequisites', 'subtopics'])
             ->orderBy('area')
             ->orderBy('title')
             ->get();
+
+        // Parent topics eligible to have subtopics
+        $parentTopicsQuery = Topic::whereNull('parent_id')->where('is_active', true);
+        if (!$isGlobalMode) {
+            $parentTopicsQuery->where(function ($q) use ($activeInstitutionId) {
+                $q->where('is_global', true)
+                  ->orWhere('institution_id', $activeInstitutionId);
+            });
+        }
+        $parentTopics = $parentTopicsQuery->orderBy('title')->get(['id', 'title', 'area', 'unit_title', 'is_global', 'institution_id']);
 
         $subjects = Subject::where('is_active', true)
             ->orderBy('name')
@@ -62,6 +83,7 @@ class TopicController extends Controller
 
         return Inertia::render('topics/index', [
             'topics' => $topics,
+            'parentTopics' => $parentTopics,
             'globalSuggestions' => $globalSuggestions,
             'subjects' => $subjects,
             'areas' => $areas,
@@ -104,6 +126,7 @@ class TopicController extends Controller
 
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
+            'parent_id' => ['nullable', 'exists:topics,id'],
             'source_topic_id' => ['nullable', 'exists:topics,id'],
             'subject_id' => ['nullable', 'exists:subjects,id'],
             'area' => ['nullable', 'string', 'max:100'],
@@ -115,6 +138,29 @@ class TopicController extends Controller
             'prerequisite_ids' => ['nullable', 'array'],
             'prerequisite_ids.*' => ['integer', 'exists:topics,id'],
         ]);
+
+        $parentId = $validated['parent_id'] ?? null;
+        if ($parentId) {
+            $parent = Topic::findOrFail($parentId);
+            if ($parent->parent_id !== null) {
+                return back()->withErrors(['parent_id' => 'Solo se permite 1 nivel de subtemas. No puedes anidar un subtema dentro de otro subtema.']);
+            }
+            if ($isGlobalMode && !$parent->is_global) {
+                return back()->withErrors(['parent_id' => 'El tema padre debe pertenecer al Banco Global.']);
+            }
+            if (!$isGlobalMode && !$parent->is_global && $parent->institution_id !== $activeInstitutionId) {
+                return back()->withErrors(['parent_id' => 'El tema padre no está disponible para esta institución.']);
+            }
+            if (empty($validated['subject_id']) && $parent->subject_id) {
+                $validated['subject_id'] = $parent->subject_id;
+            }
+            if (empty($validated['area']) && $parent->area) {
+                $validated['area'] = $parent->area;
+            }
+            if (empty($validated['unit_title']) && $parent->unit_title) {
+                $validated['unit_title'] = $parent->unit_title;
+            }
+        }
 
         // If subject_id is provided, derive area name from the subject
         $area = $validated['area'] ?? null;
@@ -132,6 +178,7 @@ class TopicController extends Controller
                 'created_by_user_id' => $user->id,
                 'institution_id' => null,
                 'source_topic_id' => null,
+                'parent_id' => $parentId,
                 'is_global' => true,
                 'status' => 'published',
                 'subject_id' => $validated['subject_id'] ?? null,
@@ -145,7 +192,7 @@ class TopicController extends Controller
                 'is_active' => true,
             ]);
 
-            $message = 'Tema agregado al Banco Global exitosamente.';
+            $message = $parentId ? 'Subtema agregado al Banco Global exitosamente.' : 'Tema agregado al Banco Global exitosamente.';
         } else {
             $sourceTopicId = $validated['source_topic_id'] ?? null;
             if ($sourceTopicId) {
@@ -160,6 +207,7 @@ class TopicController extends Controller
                 'created_by_user_id' => $user->id,
                 'institution_id' => $activeInstitutionId,
                 'source_topic_id' => $sourceTopicId,
+                'parent_id' => $parentId,
                 'is_global' => false,
                 'status' => 'local',
                 'subject_id' => $validated['subject_id'] ?? null,
@@ -173,7 +221,7 @@ class TopicController extends Controller
                 'is_active' => true,
             ]);
 
-            $message = 'Tema agregado al Banco Institucional exitosamente.';
+            $message = $parentId ? 'Subtema agregado al Banco Institucional exitosamente.' : 'Tema agregado al Banco Institucional exitosamente.';
         }
 
         if (! empty($validated['prerequisite_ids'])) {
@@ -213,6 +261,7 @@ class TopicController extends Controller
 
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
+            'parent_id' => ['nullable', 'exists:topics,id'],
             'subject_id' => ['nullable', 'exists:subjects,id'],
             'area' => ['nullable', 'string', 'max:100'],
             'unit_title' => ['nullable', 'string', 'max:255'],
@@ -223,6 +272,20 @@ class TopicController extends Controller
             'prerequisite_ids' => ['nullable', 'array'],
             'prerequisite_ids.*' => ['integer', 'exists:topics,id'],
         ]);
+
+        $parentId = $validated['parent_id'] ?? null;
+        if ($parentId) {
+            if ($parentId == $topic->id) {
+                return back()->withErrors(['parent_id' => 'Un tema no puede ser subtema de sí mismo.']);
+            }
+            if ($topic->subtopics()->exists()) {
+                return back()->withErrors(['parent_id' => 'Este tema ya contiene subtemas asociados. Para convertirlo en subtema, primero debes reasignar o eliminar sus subtemas.']);
+            }
+            $parent = Topic::findOrFail($parentId);
+            if ($parent->parent_id !== null) {
+                return back()->withErrors(['parent_id' => 'Solo se permite 1 nivel de subtemas.']);
+            }
+        }
 
         $area = $validated['area'] ?? $topic->area;
         if (! empty($validated['subject_id'])) {
@@ -235,6 +298,7 @@ class TopicController extends Controller
         }
 
         $topic->update([
+            'parent_id' => $parentId,
             'subject_id' => $validated['subject_id'] ?? null,
             'title' => $validated['title'],
             'area' => $area,
@@ -298,6 +362,11 @@ class TopicController extends Controller
         }
 
         $topic->update([
+            'is_global' => true,
+            'status' => 'published',
+        ]);
+
+        $topic->subtopics()->update([
             'is_global' => true,
             'status' => 'published',
         ]);

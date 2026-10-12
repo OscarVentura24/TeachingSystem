@@ -19,6 +19,9 @@ import {
     ArrowUpDown,
     ArrowUp,
     ArrowDown,
+    CornerDownRight,
+    Layers,
+    FolderTree,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,6 +46,9 @@ interface TopicItem {
     id: number;
     title: string;
     area: string;
+    parent_id?: number | null;
+    parent?: { id: number; title: string };
+    subtopics?: TopicItem[];
     subject_id?: number;
     subject?: SubjectItem;
     unit_title?: string;
@@ -59,8 +65,18 @@ interface TopicItem {
     prerequisites: Array<{ id: number; title: string }>;
 }
 
+interface ParentTopicOption {
+    id: number;
+    title: string;
+    area: string;
+    unit_title?: string;
+    is_global?: boolean;
+    institution_id?: number | null;
+}
+
 interface Props {
     topics: TopicItem[];
+    parentTopics?: ParentTopicOption[];
     globalSuggestions?: TopicItem[];
     subjects: SubjectItem[];
     areas: string[];
@@ -73,6 +89,7 @@ type TopicSortDirection = 'asc' | 'desc';
 
 export default function TopicsIndex({
     topics,
+    parentTopics = [],
     globalSuggestions = [],
     subjects,
     areas,
@@ -91,6 +108,7 @@ export default function TopicsIndex({
 
     const createForm = useForm({
         title: '',
+        parent_id: '' as string | number,
         source_topic_id: '' as string | number,
         subject_id: '',
         area: '',
@@ -104,6 +122,7 @@ export default function TopicsIndex({
 
     const editForm = useForm({
         title: '',
+        parent_id: '' as string | number,
         subject_id: '',
         area: '',
         unit_title: '',
@@ -165,7 +184,8 @@ export default function TopicsIndex({
                 (t.unit_title && t.unit_title.toLowerCase().includes(query)) ||
                 (t.description && t.description.toLowerCase().includes(query)) ||
                 (t.area && t.area.toLowerCase().includes(query)) ||
-                (t.institution && t.institution.name.toLowerCase().includes(query));
+                (t.institution && t.institution.name.toLowerCase().includes(query)) ||
+                (t.subtopics && t.subtopics.some((s) => s.title.toLowerCase().includes(query)));
 
             return matchesArea && matchesScope && matchesSearch;
         });
@@ -213,10 +233,29 @@ export default function TopicsIndex({
         });
     };
 
+    const handleOpenCreateSubtopic = (parentTopic: TopicItem) => {
+        createForm.reset();
+        createForm.setData({
+            title: '',
+            parent_id: parentTopic.id,
+            source_topic_id: '',
+            subject_id: parentTopic.subject_id ? String(parentTopic.subject_id) : '',
+            area: parentTopic.area,
+            unit_title: parentTopic.unit_title || '',
+            short_summary: '',
+            description: '',
+            resources_notes: '',
+            estimated_minutes: '',
+            prerequisite_ids: [],
+        });
+        setOpenDialog(true);
+    };
+
     const handleStartEdit = (topic: TopicItem) => {
         setEditingTopic(topic);
         editForm.setData({
             title: topic.title || '',
+            parent_id: topic.parent_id ? String(topic.parent_id) : '',
             subject_id: topic.subject_id ? String(topic.subject_id) : '',
             area: topic.area || '',
             unit_title: topic.unit_title || '',
@@ -443,6 +482,56 @@ export default function TopicsIndex({
                                         </div>
                                     )}
 
+                                    {/* Optional Parent Topic Selection (1-level subtopics) */}
+                                    {parentTopics.length > 0 && (
+                                        <div className="rounded-lg border bg-muted/20 p-3 space-y-1.5">
+                                            <div className="flex items-center justify-between">
+                                                <Label htmlFor="create_parent_id" className="text-xs font-semibold flex items-center gap-1.5 text-foreground">
+                                                    <FolderTree className="h-3.5 w-3.5 text-primary" /> ¿Es un Subtema? (Opcional)
+                                                </Label>
+                                                {createForm.data.parent_id && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-5 text-[11px] text-muted-foreground hover:text-foreground px-1.5"
+                                                        onClick={() => createForm.setData('parent_id', '')}
+                                                    >
+                                                        Crear como principal
+                                                    </Button>
+                                                )}
+                                            </div>
+                                            <p className="text-[11px] text-muted-foreground">
+                                                Si es parte de un tema macro (ej: "Actualizar" dentro de "Menú Contextual"), selecciónalo aquí.
+                                            </p>
+                                            <select
+                                                id="create_parent_id"
+                                                value={createForm.data.parent_id}
+                                                onChange={(e) => {
+                                                    const pId = e.target.value;
+                                                    createForm.setData('parent_id', pId);
+                                                    if (pId) {
+                                                        const p = parentTopics.find((pt) => String(pt.id) === String(pId));
+                                                        if (p?.unit_title && !createForm.data.unit_title) {
+                                                            createForm.setData('unit_title', p.unit_title);
+                                                        }
+                                                    }
+                                                }}
+                                                className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+                                            >
+                                                <option value="">Ninguno (Tema Principal)</option>
+                                                {parentTopics.map((pt) => (
+                                                    <option key={pt.id} value={pt.id}>
+                                                        {pt.title} ({pt.area})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {createForm.errors.parent_id && (
+                                                <p className="text-xs text-destructive">{createForm.errors.parent_id}</p>
+                                            )}
+                                        </div>
+                                    )}
+
                                     <div className="space-y-1.5">
                                         <Label htmlFor="create_title">Título del Tema *</Label>
                                         <Input
@@ -597,6 +686,39 @@ export default function TopicsIndex({
                                 </DialogHeader>
 
                                 <form onSubmit={handleEditSubmit} className="space-y-4 pt-2">
+                                    {/* Optional Parent Topic Selection (1-level subtopics) */}
+                                    {parentTopics.filter((pt) => pt.id !== editingTopic?.id).length > 0 && (
+                                        <div className="rounded-lg border bg-muted/20 p-3 space-y-1.5">
+                                            <Label htmlFor="edit_parent_id" className="text-xs font-semibold flex items-center gap-1.5 text-foreground">
+                                                <FolderTree className="h-3.5 w-3.5 text-primary" /> Tema Padre (Jerarquía de 1 nivel)
+                                            </Label>
+                                            <select
+                                                id="edit_parent_id"
+                                                value={editForm.data.parent_id}
+                                                onChange={(e) => editForm.setData('parent_id', e.target.value)}
+                                                disabled={Boolean(editingTopic?.subtopics && editingTopic.subtopics.length > 0)}
+                                                className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer disabled:opacity-50"
+                                            >
+                                                <option value="">Ninguno (Tema Principal)</option>
+                                                {parentTopics
+                                                    .filter((pt) => pt.id !== editingTopic?.id)
+                                                    .map((pt) => (
+                                                        <option key={pt.id} value={pt.id}>
+                                                            {pt.title} ({pt.area})
+                                                        </option>
+                                                    ))}
+                                            </select>
+                                            {editingTopic?.subtopics && editingTopic.subtopics.length > 0 && (
+                                                <p className="text-[10px] text-muted-foreground">
+                                                    Este tema contiene {editingTopic.subtopics.length} subtema(s), por lo que actúa como tema principal.
+                                                </p>
+                                            )}
+                                            {editForm.errors.parent_id && (
+                                                <p className="text-xs text-destructive">{editForm.errors.parent_id}</p>
+                                            )}
+                                        </div>
+                                    )}
+
                                     <div className="space-y-1.5">
                                         <Label htmlFor="edit_title">Título del Tema *</Label>
                                         <Input
@@ -956,6 +1078,81 @@ export default function TopicsIndex({
                                                 {topic.description}
                                             </p>
                                         )}
+
+                                        {/* Subtopics Section */}
+                                        {topic.subtopics && topic.subtopics.length > 0 ? (
+                                            <div className="mt-3 pt-2.5 border-t border-dashed">
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                    <span className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+                                                        <Layers className="h-3.5 w-3.5 text-primary" /> Subtemas ({topic.subtopics.length}):
+                                                    </span>
+                                                    {canEdit && (
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-6 px-1.5 text-[10px] text-primary hover:bg-primary/10 gap-1"
+                                                            onClick={() => handleOpenCreateSubtopic(topic)}
+                                                            title="Agregar subtema a este tema"
+                                                        >
+                                                            <Plus className="h-3 w-3" /> Subtema
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                                <ul className="space-y-1">
+                                                    {topic.subtopics.map((sub) => (
+                                                        <li
+                                                            key={sub.id}
+                                                            className="text-xs text-muted-foreground flex items-center justify-between group/sub py-0.5 px-1 rounded hover:bg-muted/40 hover:text-foreground transition-colors"
+                                                        >
+                                                            <span className="flex items-center gap-1.5 truncate">
+                                                                <CornerDownRight className="h-3 w-3 text-primary/60 shrink-0" />
+                                                                <span className="truncate">{sub.title}</span>
+                                                            </span>
+                                                            {canEdit && (
+                                                                <div className="opacity-0 group-hover/sub:opacity-100 flex items-center gap-0.5 shrink-0 transition-opacity">
+                                                                    <Button
+                                                                        type="button"
+                                                                        size="sm"
+                                                                        variant="ghost"
+                                                                        className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground"
+                                                                        onClick={() => handleStartEdit(sub)}
+                                                                        title="Editar subtema"
+                                                                    >
+                                                                        <Pencil className="h-2.5 w-2.5" />
+                                                                    </Button>
+                                                                    <Button
+                                                                        type="button"
+                                                                        size="sm"
+                                                                        variant="ghost"
+                                                                        className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive"
+                                                                        onClick={() => handleDelete(sub)}
+                                                                        title="Eliminar subtema"
+                                                                    >
+                                                                        <Trash2 className="h-2.5 w-2.5" />
+                                                                    </Button>
+                                                                </div>
+                                                            )}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        ) : (
+                                            canEdit && (
+                                                <div className="mt-3 pt-2 border-t border-dashed flex justify-end">
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-6 px-2 text-[11px] text-muted-foreground hover:text-primary gap-1"
+                                                        onClick={() => handleOpenCreateSubtopic(topic)}
+                                                        title="Agregar subtema"
+                                                    >
+                                                        <Plus className="h-3 w-3" /> Agregar Subtema
+                                                    </Button>
+                                                </div>
+                                            )
+                                        )}
                                     </div>
 
                                     {topic.prerequisites && topic.prerequisites.length > 0 && (
@@ -1053,7 +1250,23 @@ export default function TopicsIndex({
                                     return (
                                         <tr key={topic.id} className="hover:bg-muted/30 transition-colors">
                                             <td className="px-4 py-3 font-medium text-foreground">
-                                                <div>{topic.title}</div>
+                                                <div className="font-semibold">{topic.title}</div>
+                                                {topic.subtopics && topic.subtopics.length > 0 && (
+                                                    <div className="mt-1 flex flex-wrap items-center gap-1">
+                                                        <span className="text-[10px] font-medium text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded">
+                                                            {topic.subtopics.length} subtema(s):
+                                                        </span>
+                                                        {topic.subtopics.map((sub) => (
+                                                            <span
+                                                                key={sub.id}
+                                                                className="text-[10px] text-muted-foreground inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-muted/40"
+                                                            >
+                                                                <CornerDownRight className="h-2.5 w-2.5 text-primary" />
+                                                                {sub.title}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
                                                 {topic.source_topic && (
                                                     <span className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
                                                         <Sparkles className="h-2.5 w-2.5 text-primary" /> Base: {topic.source_topic.title}
@@ -1128,6 +1341,18 @@ export default function TopicsIndex({
                                                             title="Aprobar para el Banco Global"
                                                         >
                                                             <Share2 className="h-3 w-3" /> Aprobar
+                                                        </Button>
+                                                    )}
+                                                    {canEdit && (
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
+                                                            onClick={() => handleOpenCreateSubtopic(topic)}
+                                                            title="Agregar subtema a este tema"
+                                                        >
+                                                            <Plus className="h-3.5 w-3.5" />
                                                         </Button>
                                                     )}
                                                     {canEdit && (

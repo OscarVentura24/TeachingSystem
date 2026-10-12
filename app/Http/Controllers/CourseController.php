@@ -119,7 +119,11 @@ class CourseController extends Controller
             'institution',
             'academicPeriod',
             'teachers',
-            'courseTopics',
+            'courseTopics' => function ($query) {
+                $query->whereNull('parent_id')
+                    ->orderBy('sort_order')
+                    ->with('subtopics');
+            },
             'students' => function ($query) {
                 $query->orderBy('last_name')->orderBy('first_name');
             },
@@ -128,18 +132,20 @@ class CourseController extends Controller
             },
         ]);
 
-        // Load progress records for matrix
-        $progressRecords = StudentTopicProgress::whereIn('course_topic_id', $course->courseTopics->pluck('id'))
+        // Load progress records for matrix (for all topics and subtopics in this course)
+        $allCourseTopicIds = CourseTopic::where('course_id', $course->id)->pluck('id');
+        $progressRecords = StudentTopicProgress::whereIn('course_topic_id', $allCourseTopicIds)
             ->get()
             ->groupBy('student_id');
 
         // Topics available to add to pensum: global topics OR topics belonging to this course's institution
         $globalTopics = Topic::where('is_active', true)
+            ->whereNull('parent_id')
             ->where(function ($q) use ($course) {
                 $q->where('is_global', true)
                   ->orWhere('institution_id', $course->institution_id);
             })
-            ->with(['prerequisites', 'subject'])
+            ->with(['prerequisites', 'subject', 'subtopics'])
             ->orderBy('area')
             ->orderBy('title')
             ->get();
@@ -177,22 +183,33 @@ class CourseController extends Controller
     {
         $validated = $request->validate([
             'topic_id' => ['nullable', 'exists:topics,id'],
+            'parent_id' => ['nullable', 'exists:course_topics,id'],
             'title' => ['required', 'string', 'max:255'],
             'unit_title' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
         ]);
 
+        $parentId = $validated['parent_id'] ?? null;
+        if ($parentId) {
+            $parent = CourseTopic::where('course_id', $course->id)->findOrFail($parentId);
+            if ($parent->parent_id !== null) {
+                return back()->withErrors(['parent_id' => 'Solo se permite 1 nivel de subtemas.']);
+            }
+        }
+
+        $topic = null;
         if (!empty($validated['topic_id'])) {
-            $topic = Topic::find($validated['topic_id']);
+            $topic = Topic::with('subtopics')->find($validated['topic_id']);
             if (!$topic || (!$topic->is_global && $topic->institution_id !== $course->institution_id)) {
                 abort(403, 'El tema seleccionado no pertenece al catálogo disponible para esta institución.');
             }
         }
 
-        $nextSortOrder = ($course->courseTopics()->max('sort_order') ?? 0) + 1;
+        $nextSortOrder = ($course->courseTopics()->where('parent_id', $parentId)->max('sort_order') ?? 0) + 1;
 
-        $course->courseTopics()->create([
+        $newCourseTopic = $course->courseTopics()->create([
             'topic_id' => $validated['topic_id'] ?? null,
+            'parent_id' => $parentId,
             'title' => $validated['title'],
             'unit_title' => $validated['unit_title'] ?? null,
             'description' => $validated['description'] ?? null,
@@ -200,7 +217,22 @@ class CourseController extends Controller
             'is_required' => true,
         ]);
 
-        return back()->with('success', 'Tema agregado al pensum.');
+        // If importing a parent topic from the bank that has subtopics, automatically import them as well
+        if ($topic && !$parentId && $topic->subtopics->isNotEmpty()) {
+            foreach ($topic->subtopics as $subIndex => $sub) {
+                $course->courseTopics()->create([
+                    'topic_id' => $sub->id,
+                    'parent_id' => $newCourseTopic->id,
+                    'title' => $sub->title,
+                    'unit_title' => $sub->unit_title ?? $newCourseTopic->unit_title,
+                    'description' => $sub->description,
+                    'sort_order' => $subIndex + 1,
+                    'is_required' => true,
+                ]);
+            }
+        }
+
+        return back()->with('success', $parentId ? 'Subtema agregado al pensum.' : 'Tema agregado al pensum.');
     }
 
     /**

@@ -15,6 +15,9 @@ import {
     Trash2,
     UserCheck,
     Pencil,
+    CornerDownRight,
+    Layers,
+    FolderTree,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,10 +35,12 @@ import { SearchableSelect } from '@/components/ui/searchable-select';
 
 interface CourseTopic {
     id: number;
+    parent_id?: number | null;
     title: string;
     unit_title?: string;
     description?: string;
     sort_order: number;
+    subtopics?: CourseTopic[];
 }
 
 interface Student {
@@ -62,6 +67,7 @@ interface GlobalTopic {
     area: string;
     unit_title?: string;
     description?: string;
+    subtopics?: Array<{ id: number; title: string }>;
 }
 
 interface Teacher {
@@ -133,10 +139,23 @@ export default function CourseShow({
     // Form to add topic to course pensum
     const addTopicForm = useForm({
         topic_id: '',
+        parent_id: '' as string | number,
         title: '',
         unit_title: '',
         description: '',
     });
+
+    const handleOpenAddSubtopic = (parentCourseTopic: CourseTopic) => {
+        addTopicForm.reset();
+        addTopicForm.setData({
+            topic_id: '',
+            parent_id: parentCourseTopic.id,
+            title: '',
+            unit_title: parentCourseTopic.unit_title || '',
+            description: '',
+        });
+        setOpenAddTopicDialog(true);
+    };
 
     // Form to enroll an existing institutional student into this course
     const enrollStudentForm = useForm({
@@ -156,12 +175,13 @@ export default function CourseShow({
     const handleSelectGlobalTopic = (topicId: string | number) => {
         const selected = globalTopics.find((t) => String(t.id) === String(topicId));
         if (selected) {
-            addTopicForm.setData({
+            addTopicForm.setData((prev) => ({
+                ...prev,
                 topic_id: String(selected.id),
                 title: selected.title,
                 unit_title: selected.unit_title || '',
                 description: selected.description || '',
-            });
+            }));
         } else {
             addTopicForm.setData('topic_id', '');
         }
@@ -436,13 +456,56 @@ export default function CourseShow({
                                                     options={globalTopics.map((gt) => ({
                                                         value: gt.id,
                                                         label: gt.title,
-                                                        subLabel: `[${gt.area}] ${gt.unit_title ? `• ${gt.unit_title}` : ''}`,
+                                                        subLabel: `[${gt.area}] ${gt.unit_title ? `• ${gt.unit_title}` : ''}${gt.subtopics && gt.subtopics.length > 0 ? ` (${gt.subtopics.length} subtemas)` : ''}`,
                                                     }))}
                                                     value={addTopicForm.data.topic_id}
                                                     onChange={handleSelectGlobalTopic}
                                                     placeholder="Buscar tema del banco global..."
                                                     searchPlaceholder="Buscar por título, área o unidad..."
                                                 />
+                                            </div>
+                                        )}
+
+                                        {course.course_topics.length > 0 && (
+                                            <div className="space-y-1.5 bg-muted/20 p-3 rounded-lg border border-dashed">
+                                                <div className="flex items-center justify-between">
+                                                    <Label htmlFor="parent_course_topic_id" className="text-xs font-semibold flex items-center gap-1.5">
+                                                        <FolderTree className="h-3.5 w-3.5 text-primary" /> ¿Es un Subtema? (Opcional)
+                                                    </Label>
+                                                    {addTopicForm.data.parent_id && (
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-5 text-[11px] text-muted-foreground hover:text-foreground px-1.5"
+                                                            onClick={() => addTopicForm.setData('parent_id', '')}
+                                                        >
+                                                            Tema Principal
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                                <select
+                                                    id="parent_course_topic_id"
+                                                    value={addTopicForm.data.parent_id}
+                                                    onChange={(e) => {
+                                                        const pId = e.target.value;
+                                                        addTopicForm.setData('parent_id', pId);
+                                                        if (pId) {
+                                                            const parent = course.course_topics.find((ct) => String(ct.id) === String(pId));
+                                                            if (parent?.unit_title && !addTopicForm.data.unit_title) {
+                                                                addTopicForm.setData('unit_title', parent.unit_title);
+                                                            }
+                                                        }
+                                                    }}
+                                                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+                                                >
+                                                    <option value="">Ninguno (Agregar como Tema Principal)</option>
+                                                    {course.course_topics.map((ct) => (
+                                                        <option key={ct.id} value={ct.id}>
+                                                            {ct.title} {ct.unit_title ? `(${ct.unit_title})` : ''}
+                                                        </option>
+                                                    ))}
+                                                </select>
                                             </div>
                                         )}
 
@@ -501,32 +564,87 @@ export default function CourseShow({
                         ) : (
                             <div className="divide-y rounded-xl border bg-card">
                                 {course.course_topics.map((topic, index) => (
-                                    <div key={topic.id} className="flex items-center justify-between p-4 hover:bg-muted/30">
-                                        <div className="flex items-center gap-4">
-                                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
-                                                {index + 1}
-                                            </span>
-                                            <div>
-                                                <h4 className="text-sm font-semibold text-foreground">{topic.title}</h4>
-                                                {topic.unit_title && (
-                                                    <span className="text-xs text-muted-foreground block">{topic.unit_title}</span>
-                                                )}
-                                                {topic.description && (
-                                                    <p className="text-xs text-muted-foreground/80 mt-1 line-clamp-1">{topic.description}</p>
-                                                )}
+                                    <div key={topic.id} className="p-4 hover:bg-muted/10 transition-colors">
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="flex items-start gap-3">
+                                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground mt-0.5">
+                                                    {index + 1}
+                                                </span>
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <h4 className="text-sm font-semibold text-foreground">{topic.title}</h4>
+                                                        {topic.subtopics && topic.subtopics.length > 0 && (
+                                                            <span className="text-[10px] font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                                                <Layers className="h-2.5 w-2.5" /> {topic.subtopics.length} subtema(s)
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {topic.unit_title && (
+                                                        <span className="text-xs text-muted-foreground block">{topic.unit_title}</span>
+                                                    )}
+                                                    {topic.description && (
+                                                        <p className="text-xs text-muted-foreground/80 mt-1 line-clamp-1">{topic.description}</p>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 px-2 text-xs text-muted-foreground hover:text-primary gap-1"
+                                                    onClick={() => handleOpenAddSubtopic(topic)}
+                                                    title="Agregar subtema a este tema"
+                                                >
+                                                    <Plus className="h-3.5 w-3.5" /> Subtema
+                                                </Button>
+
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                                                    onClick={() => handleRemoveTopicFromPensum(topic.id, topic.title)}
+                                                    title="Retirar tema del pensum"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
                                             </div>
                                         </div>
 
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive shrink-0"
-                                            onClick={() => handleRemoveTopicFromPensum(topic.id, topic.title)}
-                                            title="Retirar tema del pensum"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
+                                        {/* Nested Subtopics */}
+                                        {topic.subtopics && topic.subtopics.length > 0 && (
+                                            <div className="ml-10 mt-3 pt-2.5 border-t border-dashed space-y-1.5">
+                                                {topic.subtopics.map((sub) => (
+                                                    <div
+                                                        key={sub.id}
+                                                        className="flex items-center justify-between py-1.5 px-3 rounded-md bg-muted/30 hover:bg-muted/60 transition-colors text-xs"
+                                                    >
+                                                        <div className="flex items-center gap-2 truncate">
+                                                            <CornerDownRight className="h-3.5 w-3.5 text-primary/70 shrink-0" />
+                                                            <span className="font-medium text-foreground truncate">{sub.title}</span>
+                                                            {sub.description && (
+                                                                <span className="text-[11px] text-muted-foreground truncate hidden sm:inline">
+                                                                    — {sub.description}
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive shrink-0"
+                                                            onClick={() => handleRemoveTopicFromPensum(sub.id, sub.title)}
+                                                            title="Retirar subtema"
+                                                        >
+                                                            <Trash2 className="h-3 w-3" />
+                                                        </Button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
