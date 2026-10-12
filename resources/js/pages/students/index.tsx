@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Head, useForm, router } from '@inertiajs/react';
 import {
     Plus,
@@ -15,6 +15,10 @@ import {
     CheckCircle2,
     Calendar,
     Hash,
+    ArrowUpDown,
+    ArrowUp,
+    ArrowDown,
+    ListFilter,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,6 +63,13 @@ interface SuggestedMatricula {
     period_name?: string | null;
 }
 
+interface CourseItem {
+    id: number;
+    name: string;
+    code?: string;
+    section?: string;
+}
+
 interface StudentItem {
     id: number;
     institution_id: number;
@@ -71,13 +82,19 @@ interface StudentItem {
     notes?: string;
     is_active: boolean;
     courses_count?: number;
+    courses?: CourseItem[];
     created_at?: string;
 }
+
+type SortField = 'name' | 'matricula' | 'course' | 'courses_count' | 'status' | 'created_at' | 'institution';
+type SortDirection = 'asc' | 'desc';
 
 interface Props {
     students: StudentItem[];
     institutions: InstitutionItem[];
     isGlobalMode?: boolean;
+    currentSort?: string;
+    currentDirection?: 'asc' | 'desc';
     availableFormats?: FormatItem[];
     academicPeriods?: AcademicPeriodItem[];
     activePeriod?: AcademicPeriodItem | null;
@@ -95,6 +112,8 @@ export default function StudentsIndex({
     students,
     institutions = [],
     isGlobalMode = false,
+    currentSort = 'name',
+    currentDirection = 'asc',
     availableFormats = [],
     academicPeriods = [],
     activePeriod,
@@ -107,6 +126,19 @@ export default function StudentsIndex({
     const [openCreateDialog, setOpenCreateDialog] = useState(false);
     const [openEditDialog, setOpenEditDialog] = useState(false);
     const [editingStudent, setEditingStudent] = useState<StudentItem | null>(null);
+
+    // Multi-factor sorting state
+    const [sortField, setSortField] = useState<SortField>(() => {
+        if (currentSort === 'student_id_number' || currentSort === 'matricula') return 'matricula';
+        if (currentSort === 'courses_count') return 'courses_count';
+        if (currentSort === 'is_active' || currentSort === 'status') return 'status';
+        if (currentSort === 'created_at' || currentSort === 'date') return 'created_at';
+        if (currentSort === 'course') return 'course';
+        return 'name';
+    });
+    const [sortDirection, setSortDirection] = useState<SortDirection>(
+        currentDirection === 'desc' ? 'desc' : 'asc'
+    );
 
     // Generation variables in modal
     const [generationMode, setGenerationMode] = useState<'auto' | 'manual'>('auto');
@@ -181,20 +213,120 @@ export default function StudentsIndex({
         }
     };
 
-    const filteredStudents = students.filter((s) => {
-        const matchesInstitution =
-            selectedInstitutionId === 'all' || String(s.institution_id) === selectedInstitutionId;
+    const handleSort = (field: SortField) => {
+        if (sortField === field) {
+            setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+        } else {
+            setSortField(field);
+            setSortDirection(field === 'courses_count' || field === 'created_at' ? 'desc' : 'asc');
+        }
+    };
 
-        const fullName = `${s.first_name} ${s.last_name}`.toLowerCase();
-        const query = search.toLowerCase();
-        const matchesSearch =
-            fullName.includes(query) ||
-            (s.student_id_number && s.student_id_number.toLowerCase().includes(query)) ||
-            (s.email && s.email.toLowerCase().includes(query)) ||
-            (s.institution && s.institution.name.toLowerCase().includes(query));
+    const handleSortDropdownChange = (val: string) => {
+        const parts = val.split('_');
+        const dir = parts.pop() as SortDirection;
+        const field = parts.join('_') as SortField;
+        if (field && dir) {
+            setSortField(field);
+            setSortDirection(dir);
+        }
+    };
 
-        return matchesInstitution && matchesSearch;
-    });
+    const renderSortIcon = (field: SortField) => {
+        if (sortField !== field) {
+            return (
+                <ArrowUpDown className="h-3 w-3 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors shrink-0" />
+            );
+        }
+        return sortDirection === 'asc' ? (
+            <ArrowUp className="h-3.5 w-3.5 text-primary shrink-0" />
+        ) : (
+            <ArrowDown className="h-3.5 w-3.5 text-primary shrink-0" />
+        );
+    };
+
+    const filteredAndSortedStudents = useMemo(() => {
+        // 1. Filter
+        const query = search.trim().toLowerCase();
+        const filtered = students.filter((s) => {
+            const matchesInstitution =
+                selectedInstitutionId === 'all' || String(s.institution_id) === selectedInstitutionId;
+
+            if (!matchesInstitution) return false;
+            if (!query) return true;
+
+            const fullName = `${s.first_name} ${s.last_name}`.toLowerCase();
+            const courseNames = (s.courses || [])
+                .map((c) => `${c.name} ${c.code || ''} ${c.section || ''}`.toLowerCase())
+                .join(' ');
+
+            return (
+                fullName.includes(query) ||
+                (s.student_id_number && s.student_id_number.toLowerCase().includes(query)) ||
+                (s.email && s.email.toLowerCase().includes(query)) ||
+                courseNames.includes(query) ||
+                (s.institution && s.institution.name.toLowerCase().includes(query))
+            );
+        });
+
+        // 2. Multi-factor Sort
+        return [...filtered].sort((a, b) => {
+            let comparison = 0;
+
+            switch (sortField) {
+                case 'name': {
+                    const nameA = `${a.last_name} ${a.first_name}`.trim();
+                    const nameB = `${b.last_name} ${b.first_name}`.trim();
+                    comparison = nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
+                    break;
+                }
+                case 'matricula': {
+                    const matA = a.student_id_number || '';
+                    const matB = b.student_id_number || '';
+                    if (!matA && !matB) comparison = 0;
+                    else if (!matA) comparison = 1;
+                    else if (!matB) comparison = -1;
+                    else comparison = matA.localeCompare(matB, 'es', { numeric: true, sensitivity: 'base' });
+                    break;
+                }
+                case 'course': {
+                    const courseA = a.courses?.[0]?.name || '';
+                    const courseB = b.courses?.[0]?.name || '';
+                    if (!courseA && !courseB) comparison = 0;
+                    else if (!courseA) comparison = 1;
+                    else if (!courseB) comparison = -1;
+                    else comparison = courseA.localeCompare(courseB, 'es', { sensitivity: 'base' });
+                    break;
+                }
+                case 'courses_count': {
+                    const countA = a.courses_count ?? (a.courses?.length ?? 0);
+                    const countB = b.courses_count ?? (b.courses?.length ?? 0);
+                    comparison = countA - countB;
+                    break;
+                }
+                case 'status': {
+                    comparison = (a.is_active ? 1 : 0) - (b.is_active ? 1 : 0);
+                    break;
+                }
+                case 'created_at': {
+                    const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+                    const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+                    comparison = timeA - timeB;
+                    break;
+                }
+                case 'institution': {
+                    const instA = a.institution?.name || '';
+                    const instB = b.institution?.name || '';
+                    comparison = instA.localeCompare(instB, 'es', { sensitivity: 'base' });
+                    break;
+                }
+                default:
+                    comparison = 0;
+            }
+
+            return sortDirection === 'asc' ? comparison : -comparison;
+        });
+    }, [students, selectedInstitutionId, search, sortField, sortDirection]);
 
     const handleCreateSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -695,46 +827,83 @@ export default function StudentsIndex({
                     </div>
                 </div>
 
-                {/* Filters */}
-                <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
-                    <div className="relative w-full sm:w-80">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            placeholder="Buscar por nombre, matrícula o email..."
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            className="pl-9 text-xs"
-                        />
+                {/* Filters & Sorting */}
+                <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+                    <div className="flex flex-1 flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
+                        <div className="relative w-full sm:w-80">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Buscar por nombre, matrícula o curso..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="pl-9 text-xs"
+                            />
+                        </div>
+
+                        {isGlobalMode && institutions.length > 0 && (
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-xs text-muted-foreground whitespace-nowrap">Sede:</span>
+                                <select
+                                    value={selectedInstitutionId}
+                                    onChange={(e) => setSelectedInstitutionId(e.target.value)}
+                                    className="h-8 rounded-lg border bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                >
+                                    <option value="all">Todas las Sedes ({students.length})</option>
+                                    {institutions.map((inst) => (
+                                        <option key={inst.id} value={String(inst.id)}>
+                                            {inst.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
                     </div>
 
-                    {isGlobalMode && institutions.length > 0 && (
-                        <div className="flex items-center gap-2 w-full sm:w-auto">
-                            <span className="text-xs text-muted-foreground">Sede:</span>
+                    <div className="flex items-center gap-2.5 self-end md:self-auto">
+                        <div className="flex items-center gap-1.5">
+                            <ListFilter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span className="text-xs text-muted-foreground whitespace-nowrap hidden sm:inline">Ordenar por:</span>
                             <select
-                                value={selectedInstitutionId}
-                                onChange={(e) => setSelectedInstitutionId(e.target.value)}
+                                value={`${sortField}_${sortDirection}`}
+                                onChange={(e) => handleSortDropdownChange(e.target.value)}
                                 className="h-8 rounded-lg border bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                             >
-                                <option value="all">Todas las Sedes ({students.length})</option>
-                                {institutions.map((inst) => (
-                                    <option key={inst.id} value={String(inst.id)}>
-                                        {inst.name}
-                                    </option>
-                                ))}
+                                <option value="name_asc">Nombre (A → Z)</option>
+                                <option value="name_desc">Nombre (Z → A)</option>
+                                <option value="matricula_asc">Matrícula (Menor a Mayor)</option>
+                                <option value="matricula_desc">Matrícula (Mayor a Menor)</option>
+                                <option value="course_asc">Curso (A → Z)</option>
+                                <option value="course_desc">Curso (Z → A)</option>
+                                <option value="courses_count_desc">Cursos (Más inscritos)</option>
+                                <option value="courses_count_asc">Cursos (Menos inscritos)</option>
+                                <option value="status_desc">Estado (Activos primero)</option>
+                                <option value="status_asc">Estado (Inactivos primero)</option>
+                                <option value="created_at_desc">Registro (Más recientes)</option>
+                                <option value="created_at_asc">Registro (Más antiguos)</option>
+                                {isGlobalMode && (
+                                    <>
+                                        <option value="institution_asc">Institución (A → Z)</option>
+                                        <option value="institution_desc">Institución (Z → A)</option>
+                                    </>
+                                )}
                             </select>
                         </div>
-                    )}
+
+                        <span className="text-[11px] text-muted-foreground bg-muted/60 px-2 py-1 rounded-md border border-border/40 whitespace-nowrap">
+                            {filteredAndSortedStudents.length} {filteredAndSortedStudents.length === 1 ? 'estudiante' : 'estudiantes'}
+                        </span>
+                    </div>
                 </div>
 
                 {/* Content */}
-                {filteredStudents.length === 0 ? (
+                {filteredAndSortedStudents.length === 0 ? (
                     <div className="rounded-xl border border-dashed p-12 text-center text-muted-foreground">
                         <UserCheck className="mx-auto h-10 w-10 text-muted-foreground/40 mb-2" />
                         <p className="font-medium">No se encontraron estudiantes registrados.</p>
                         <p className="text-xs mt-1">
                             {students.length === 0
                                 ? 'Matricula a los estudiantes de la institución para que puedan ser inscritos en los cursos.'
-                                : 'Prueba cambiando los términos de búsqueda.'}
+                                : 'Prueba cambiando los términos de búsqueda o filtros.'}
                         </p>
                         {students.length === 0 && (
                             <Button
@@ -752,25 +921,65 @@ export default function StudentsIndex({
                         <table className="w-full text-left text-xs border-collapse">
                             <thead className="bg-muted/60 border-b">
                                 <tr>
-                                    <th className="px-4 py-3 font-semibold text-foreground min-w-[220px]">
-                                        Estudiante
+                                    <th className="px-4 py-3 font-semibold text-foreground min-w-[200px]">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSort('name')}
+                                            className="flex items-center gap-1.5 hover:text-primary transition-colors group cursor-pointer text-left"
+                                            title="Ordenar por nombre"
+                                        >
+                                            <span>Estudiante</span>
+                                            {renderSortIcon('name')}
+                                        </button>
                                     </th>
-                                    <th className="px-4 py-3 font-semibold text-foreground min-w-[130px]">
-                                        Matrícula / Carnet
+                                    <th className="px-4 py-3 font-semibold text-foreground min-w-[140px]">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSort('matricula')}
+                                            className="flex items-center gap-1.5 hover:text-primary transition-colors group cursor-pointer text-left"
+                                            title="Ordenar por número de matrícula"
+                                        >
+                                            <span>Matrícula / Carnet</span>
+                                            {renderSortIcon('matricula')}
+                                        </button>
                                     </th>
                                     {isGlobalMode && (
                                         <th className="px-4 py-3 font-semibold text-foreground min-w-[140px]">
-                                            Institución
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSort('institution')}
+                                                className="flex items-center gap-1.5 hover:text-primary transition-colors group cursor-pointer text-left"
+                                                title="Ordenar por institución"
+                                            >
+                                                <span>Institución</span>
+                                                {renderSortIcon('institution')}
+                                            </button>
                                         </th>
                                     )}
                                     <th className="px-4 py-3 font-semibold text-foreground min-w-[120px]">
                                         Contacto
                                     </th>
-                                    <th className="px-4 py-3 font-semibold text-foreground min-w-[100px]">
-                                        Cursos
+                                    <th className="px-4 py-3 font-semibold text-foreground min-w-[140px]">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSort('course')}
+                                            className="flex items-center gap-1.5 hover:text-primary transition-colors group cursor-pointer text-left"
+                                            title="Ordenar por curso (haz clic para alternar)"
+                                        >
+                                            <span>Cursos</span>
+                                            {renderSortIcon('course')}
+                                        </button>
                                     </th>
-                                    <th className="px-4 py-3 font-semibold text-foreground min-w-[80px]">
-                                        Estado
+                                    <th className="px-4 py-3 font-semibold text-foreground min-w-[90px]">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSort('status')}
+                                            className="flex items-center gap-1.5 hover:text-primary transition-colors group cursor-pointer text-left"
+                                            title="Ordenar por estado"
+                                        >
+                                            <span>Estado</span>
+                                            {renderSortIcon('status')}
+                                        </button>
                                     </th>
                                     <th className="px-4 py-3 font-semibold text-foreground text-right min-w-[80px]">
                                         Acciones
@@ -778,7 +987,7 @@ export default function StudentsIndex({
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
-                                {filteredStudents.map((student) => (
+                                {filteredAndSortedStudents.map((student) => (
                                     <tr key={student.id} className="hover:bg-muted/30 transition-colors">
                                         <td className="px-4 py-3">
                                             <div className="font-semibold text-foreground">
@@ -816,9 +1025,31 @@ export default function StudentsIndex({
                                             )}
                                         </td>
                                         <td className="px-4 py-3">
-                                            <span className="inline-flex items-center gap-1 rounded bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                                                <GraduationCap className="h-3 w-3" /> {student.courses_count ?? 0} curso(s)
-                                            </span>
+                                            {student.courses && student.courses.length > 0 ? (
+                                                <div className="flex flex-wrap items-center gap-1">
+                                                    <span className="inline-flex items-center gap-1 rounded bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                                                        <GraduationCap className="h-3 w-3 shrink-0" />
+                                                        <span className="max-w-[130px] truncate" title={student.courses[0].name}>
+                                                            {student.courses[0].name}
+                                                        </span>
+                                                        {student.courses[0].section && (
+                                                            <span className="text-[10px] text-primary/70">({student.courses[0].section})</span>
+                                                        )}
+                                                    </span>
+                                                    {student.courses.length > 1 && (
+                                                        <span
+                                                            className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                                                            title={student.courses.slice(1).map((c) => c.name).join(', ')}
+                                                        >
+                                                            +{student.courses.length - 1}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1 rounded bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground/60 italic">
+                                                    <GraduationCap className="h-3 w-3 shrink-0 opacity-40" /> Sin cursos
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-4 py-3">
                                             {student.is_active ? (

@@ -29,27 +29,28 @@ class StudentController extends Controller
         $activeInstitutionId = $this->contextService->getActiveInstitutionId($request);
         $user = $request->user();
 
+        $sortBy = $request->input('sort_by', 'name');
+        $sortDirection = $request->input('sort_direction', 'asc');
+
         if ($isGlobalMode) {
-            $studentsQuery = Student::with(['institution'])
-                ->withCount('courses')
-                ->orderBy('last_name')
-                ->orderBy('first_name');
+            $studentsQuery = Student::with(['institution', 'courses:id,name,code,section'])
+                ->withCount('courses');
 
             $filterInstId = $request->input('institution_id');
             if ($filterInstId) {
                 $studentsQuery->where('institution_id', $filterInstId);
             }
 
-            $students = $studentsQuery->get();
+            $students = $this->applySorting($studentsQuery, $sortBy, $sortDirection)->get();
             $institutions = Institution::where('is_active', true)->orderBy('name')->get(['id', 'name', 'code', 'matricula_format']);
 
             $activeInstitution = $filterInstId ? Institution::find($filterInstId) : null;
         } else {
-            $students = Student::where('institution_id', $activeInstitutionId)
-                ->withCount('courses')
-                ->orderBy('last_name')
-                ->orderBy('first_name')
-                ->get();
+            $studentsQuery = Student::where('institution_id', $activeInstitutionId)
+                ->with(['courses:id,name,code,section'])
+                ->withCount('courses');
+
+            $students = $this->applySorting($studentsQuery, $sortBy, $sortDirection)->get();
 
             $institutions = [];
             $activeInstitution = $activeInstitutionId ? Institution::find($activeInstitutionId) : null;
@@ -80,6 +81,8 @@ class StudentController extends Controller
             'students' => $students,
             'institutions' => $institutions,
             'isGlobalMode' => $isGlobalMode,
+            'currentSort' => $sortBy,
+            'currentDirection' => $sortDirection,
             'availableFormats' => $availableFormats,
             'academicPeriods' => $academicPeriods,
             'activePeriod' => $activePeriod ? [
@@ -96,6 +99,22 @@ class StudentController extends Controller
                 'matricula_format' => $activeInstitution->matricula_format,
             ] : null,
         ]);
+    }
+
+    /**
+     * Apply sorting to the student query based on criteria.
+     */
+    private function applySorting($query, string $sortBy, string $direction)
+    {
+        $direction = strtolower($direction) === 'desc' ? 'desc' : 'asc';
+
+        return match ($sortBy) {
+            'student_id_number', 'matricula' => $query->orderBy('student_id_number', $direction),
+            'courses_count' => $query->orderBy('courses_count', $direction),
+            'created_at', 'date' => $query->orderBy('created_at', $direction),
+            'is_active', 'status' => $query->orderBy('is_active', $direction),
+            default => $query->orderBy('last_name', $direction)->orderBy('first_name', $direction),
+        };
     }
 
     /**
