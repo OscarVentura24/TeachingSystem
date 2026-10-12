@@ -22,6 +22,8 @@ import {
     CornerDownRight,
     Layers,
     FolderTree,
+    ChevronUp,
+    ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,6 +49,7 @@ interface TopicItem {
     title: string;
     area: string;
     parent_id?: number | null;
+    sort_order?: number;
     parent?: { id: number; title: string };
     subtopics?: TopicItem[];
     subject_id?: number;
@@ -316,6 +319,24 @@ export default function TopicsIndex({
             prerequisite_ids: topic.prerequisites ? topic.prerequisites.map((p) => p.id) : [],
         });
         setOpenDialog(true);
+    };
+
+    const handleReorderSubtopics = (parentTopic: TopicItem, currentIndex: number, direction: 'up' | 'down') => {
+        if (!parentTopic.subtopics || parentTopic.subtopics.length <= 1) return;
+        const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+        if (targetIndex < 0 || targetIndex >= parentTopic.subtopics.length) return;
+
+        const newSubtopics = [...parentTopic.subtopics];
+        const temp = newSubtopics[currentIndex];
+        newSubtopics[currentIndex] = newSubtopics[targetIndex];
+        newSubtopics[targetIndex] = temp;
+
+        const subtopicIds = newSubtopics.map((s) => s.id);
+        router.post(`/topics/${parentTopic.id}/reorder-subtopics`, {
+            subtopic_ids: subtopicIds,
+        }, {
+            preserveScroll: true,
+        });
     };
 
     const handleSelectSuggestion = (val: string | number) => {
@@ -1100,17 +1121,42 @@ export default function TopicsIndex({
                                                     )}
                                                 </div>
                                                 <ul className="space-y-1">
-                                                    {topic.subtopics.map((sub) => (
+                                                    {topic.subtopics.map((sub, sIdx) => (
                                                         <li
                                                             key={sub.id}
                                                             className="text-xs text-muted-foreground flex items-center justify-between group/sub py-0.5 px-1 rounded hover:bg-muted/40 hover:text-foreground transition-colors"
                                                         >
                                                             <span className="flex items-center gap-1.5 truncate">
                                                                 <CornerDownRight className="h-3 w-3 text-primary/60 shrink-0" />
+                                                                <span className="font-mono text-[9px] text-muted-foreground/80 bg-background px-1 py-0.5 rounded border shrink-0">
+                                                                    {sIdx + 1}
+                                                                </span>
                                                                 <span className="truncate">{sub.title}</span>
                                                             </span>
                                                             {canEdit && (
                                                                 <div className="opacity-0 group-hover/sub:opacity-100 flex items-center gap-0.5 shrink-0 transition-opacity">
+                                                                    <Button
+                                                                        type="button"
+                                                                        size="sm"
+                                                                        variant="ghost"
+                                                                        className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground disabled:opacity-20"
+                                                                        disabled={sIdx === 0}
+                                                                        onClick={() => handleReorderSubtopics(topic, sIdx, 'up')}
+                                                                        title="Subir subtema"
+                                                                    >
+                                                                        <ChevronUp className="h-3 w-3" />
+                                                                    </Button>
+                                                                    <Button
+                                                                        type="button"
+                                                                        size="sm"
+                                                                        variant="ghost"
+                                                                        className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground disabled:opacity-20"
+                                                                        disabled={sIdx === topic.subtopics!.length - 1}
+                                                                        onClick={() => handleReorderSubtopics(topic, sIdx, 'down')}
+                                                                        title="Bajar subtema"
+                                                                    >
+                                                                        <ChevronDown className="h-3 w-3" />
+                                                                    </Button>
                                                                     <Button
                                                                         type="button"
                                                                         size="sm"
@@ -1252,17 +1298,40 @@ export default function TopicsIndex({
                                             <td className="px-4 py-3 font-medium text-foreground">
                                                 <div className="font-semibold">{topic.title}</div>
                                                 {topic.subtopics && topic.subtopics.length > 0 && (
-                                                    <div className="mt-1 flex flex-wrap items-center gap-1">
+                                                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
                                                         <span className="text-[10px] font-medium text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded">
                                                             {topic.subtopics.length} subtema(s):
                                                         </span>
-                                                        {topic.subtopics.map((sub) => (
+                                                        {topic.subtopics.map((sub, sIdx) => (
                                                             <span
                                                                 key={sub.id}
-                                                                className="text-[10px] text-muted-foreground inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-muted/40"
+                                                                className="text-[10px] text-muted-foreground inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/40 hover:bg-muted/70 group/tabsub transition-colors"
                                                             >
                                                                 <CornerDownRight className="h-2.5 w-2.5 text-primary" />
-                                                                {sub.title}
+                                                                <span className="font-mono text-[9px] text-muted-foreground/80 font-bold">{sIdx + 1}.</span>
+                                                                <span>{sub.title}</span>
+                                                                {canEdit && (
+                                                                    <span className="inline-flex items-center gap-0.5 ml-0.5 opacity-0 group-hover/tabsub:opacity-100 transition-opacity">
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={sIdx === 0}
+                                                                            onClick={(e) => { e.stopPropagation(); handleReorderSubtopics(topic, sIdx, 'up'); }}
+                                                                            className="p-0.5 hover:text-foreground disabled:opacity-20"
+                                                                            title="Subir subtema"
+                                                                        >
+                                                                            <ChevronUp className="h-2.5 w-2.5" />
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={sIdx === topic.subtopics!.length - 1}
+                                                                            onClick={(e) => { e.stopPropagation(); handleReorderSubtopics(topic, sIdx, 'down'); }}
+                                                                            className="p-0.5 hover:text-foreground disabled:opacity-20"
+                                                                            title="Bajar subtema"
+                                                                        >
+                                                                            <ChevronDown className="h-2.5 w-2.5" />
+                                                                        </button>
+                                                                    </span>
+                                                                )}
                                                             </span>
                                                         ))}
                                                     </div>

@@ -18,6 +18,8 @@ import {
     CornerDownRight,
     Layers,
     FolderTree,
+    ChevronUp,
+    ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -236,6 +238,42 @@ export default function CourseShow({
         if (confirm(`¿Estás seguro de retirar el tema "${title}" del pensum de este curso?`)) {
             router.delete(`/courses/${course.id}/topics/${topicId}`);
         }
+    };
+
+    const handleReorderCourseSubtopics = (parentTopic: CourseTopic, currentIndex: number, direction: 'up' | 'down') => {
+        if (!parentTopic.subtopics || parentTopic.subtopics.length <= 1) return;
+        const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+        if (targetIndex < 0 || targetIndex >= parentTopic.subtopics.length) return;
+
+        const newSubtopics = [...parentTopic.subtopics];
+        const temp = newSubtopics[currentIndex];
+        newSubtopics[currentIndex] = newSubtopics[targetIndex];
+        newSubtopics[targetIndex] = temp;
+
+        const topicIds = newSubtopics.map((s) => s.id);
+        router.post(`/courses/${course.id}/topics/reorder`, {
+            topic_ids: topicIds,
+        }, {
+            preserveScroll: true,
+        });
+    };
+
+    const handleReorderCourseRootTopics = (currentIndex: number, direction: 'up' | 'down') => {
+        if (course.course_topics.length <= 1) return;
+        const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+        if (targetIndex < 0 || targetIndex >= course.course_topics.length) return;
+
+        const newTopics = [...course.course_topics];
+        const temp = newTopics[currentIndex];
+        newTopics[currentIndex] = newTopics[targetIndex];
+        newTopics[targetIndex] = temp;
+
+        const topicIds = newTopics.map((t) => t.id);
+        router.post(`/courses/${course.id}/topics/reorder`, {
+            topic_ids: topicIds,
+        }, {
+            preserveScroll: true,
+        });
     };
 
     const handleRemoveStudent = (studentId: number, name: string) => {
@@ -593,6 +631,29 @@ export default function CourseShow({
                                                     type="button"
                                                     variant="ghost"
                                                     size="sm"
+                                                    className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-20"
+                                                    disabled={index === 0}
+                                                    onClick={() => handleReorderCourseRootTopics(index, 'up')}
+                                                    title="Subir tema en el pensum"
+                                                >
+                                                    <ChevronUp className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-20"
+                                                    disabled={index === course.course_topics.length - 1}
+                                                    onClick={() => handleReorderCourseRootTopics(index, 'down')}
+                                                    title="Bajar tema en el pensum"
+                                                >
+                                                    <ChevronDown className="h-4 w-4" />
+                                                </Button>
+
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
                                                     className="h-8 px-2 text-xs text-muted-foreground hover:text-primary gap-1"
                                                     onClick={() => handleOpenAddSubtopic(topic)}
                                                     title="Agregar subtema a este tema"
@@ -613,16 +674,19 @@ export default function CourseShow({
                                             </div>
                                         </div>
 
-                                        {/* Nested Subtopics */}
+                                        {/* Nested Subtopics with Reordering */}
                                         {topic.subtopics && topic.subtopics.length > 0 && (
                                             <div className="ml-10 mt-3 pt-2.5 border-t border-dashed space-y-1.5">
-                                                {topic.subtopics.map((sub) => (
+                                                {topic.subtopics.map((sub, subIdx) => (
                                                     <div
                                                         key={sub.id}
                                                         className="flex items-center justify-between py-1.5 px-3 rounded-md bg-muted/30 hover:bg-muted/60 transition-colors text-xs"
                                                     >
                                                         <div className="flex items-center gap-2 truncate">
                                                             <CornerDownRight className="h-3.5 w-3.5 text-primary/70 shrink-0" />
+                                                            <span className="font-mono text-[10px] text-muted-foreground bg-background px-1.5 py-0.5 rounded border shrink-0">
+                                                                {index + 1}.{subIdx + 1}
+                                                            </span>
                                                             <span className="font-medium text-foreground truncate">{sub.title}</span>
                                                             {sub.description && (
                                                                 <span className="text-[11px] text-muted-foreground truncate hidden sm:inline">
@@ -631,16 +695,40 @@ export default function CourseShow({
                                                             )}
                                                         </div>
 
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive shrink-0"
-                                                            onClick={() => handleRemoveTopicFromPensum(sub.id, sub.title)}
-                                                            title="Retirar subtema"
-                                                        >
-                                                            <Trash2 className="h-3 w-3" />
-                                                        </Button>
+                                                        <div className="flex items-center gap-0.5 shrink-0">
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground disabled:opacity-20"
+                                                                disabled={subIdx === 0}
+                                                                onClick={() => handleReorderCourseSubtopics(topic, subIdx, 'up')}
+                                                                title="Subir subtema"
+                                                            >
+                                                                <ChevronUp className="h-3 w-3" />
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground disabled:opacity-20"
+                                                                disabled={subIdx === topic.subtopics!.length - 1}
+                                                                onClick={() => handleReorderCourseSubtopics(topic, subIdx, 'down')}
+                                                                title="Bajar subtema"
+                                                            >
+                                                                <ChevronDown className="h-3 w-3" />
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive shrink-0 ml-1"
+                                                                onClick={() => handleRemoveTopicFromPensum(sub.id, sub.title)}
+                                                                title="Retirar subtema"
+                                                            >
+                                                                <Trash2 className="h-3 w-3" />
+                                                            </Button>
+                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>

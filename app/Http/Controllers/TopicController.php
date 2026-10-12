@@ -173,12 +173,15 @@ class TopicController extends Controller
             $area = 'General';
         }
 
+        $sortOrder = $parentId ? (Topic::where('parent_id', $parentId)->max('sort_order') ?? 0) + 1 : 0;
+
         if ($isGlobalMode) {
             $topic = Topic::create([
                 'created_by_user_id' => $user->id,
                 'institution_id' => null,
                 'source_topic_id' => null,
                 'parent_id' => $parentId,
+                'sort_order' => $sortOrder,
                 'is_global' => true,
                 'status' => 'published',
                 'subject_id' => $validated['subject_id'] ?? null,
@@ -208,6 +211,7 @@ class TopicController extends Controller
                 'institution_id' => $activeInstitutionId,
                 'source_topic_id' => $sourceTopicId,
                 'parent_id' => $parentId,
+                'sort_order' => $sortOrder,
                 'is_global' => false,
                 'status' => 'local',
                 'subject_id' => $validated['subject_id'] ?? null,
@@ -372,6 +376,36 @@ class TopicController extends Controller
         ]);
 
         return back()->with('success', "El tema '{$topic->title}' ahora está habilitado en el Banco Global para todas las instituciones.");
+    }
+
+    /**
+     * Reorder subtopics of a topic.
+     */
+    public function reorderSubtopics(Request $request, Topic $topic): RedirectResponse
+    {
+        $user = $request->user();
+        $activeInstitutionId = $this->contextService->getActiveInstitutionId($request);
+
+        if ($topic->is_global && !$user->isSuperAdmin()) {
+            abort(403, 'Solo el Super Administrador puede ordenar subtemas del Banco Global.');
+        }
+
+        if (!$topic->is_global && $topic->institution_id !== $activeInstitutionId && !$user->isSuperAdmin()) {
+            abort(403, 'No tienes permiso para ordenar subtemas de esta institución.');
+        }
+
+        $validated = $request->validate([
+            'subtopic_ids' => ['required', 'array'],
+            'subtopic_ids.*' => ['integer', 'exists:topics,id'],
+        ]);
+
+        foreach ($validated['subtopic_ids'] as $index => $subtopicId) {
+            Topic::where('id', $subtopicId)
+                ->where('parent_id', $topic->id)
+                ->update(['sort_order' => $index + 1]);
+        }
+
+        return back()->with('success', 'Orden de los subtemas actualizado.');
     }
 }
 

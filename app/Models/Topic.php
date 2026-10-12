@@ -18,6 +18,7 @@ class Topic extends Model
         'source_topic_id',
         'subject_id',
         'parent_id',
+        'sort_order',
         'title',
         'area',
         'unit_title',
@@ -33,6 +34,7 @@ class Topic extends Model
     protected function casts(): array
     {
         return [
+            'sort_order' => 'integer',
             'estimated_minutes' => 'integer',
             'is_global' => 'boolean',
             'is_active' => 'boolean',
@@ -66,7 +68,7 @@ class Topic extends Model
 
     public function subtopics(): HasMany
     {
-        return $this->hasMany(Topic::class, 'parent_id')->orderBy('id');
+        return $this->hasMany(Topic::class, 'parent_id')->orderBy('sort_order')->orderBy('id');
     }
 
     public function isSubtopic(): bool

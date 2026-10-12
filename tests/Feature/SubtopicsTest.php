@@ -192,3 +192,93 @@ test('teacher can add custom subtopic directly to course pensum', function () {
         ->and($customSubtopic->parent_id)->toBe($courseParent->id)
         ->and($customSubtopic->isSubtopic())->toBeTrue();
 });
+
+test('user can reorder subtopics in the topic bank', function () {
+    $parentTopic = Topic::create([
+        'created_by_user_id' => $this->user->id,
+        'subject_id' => $this->subject->id,
+        'title' => 'Menú Contextual',
+        'area' => 'Frontend',
+        'is_global' => true,
+    ]);
+
+    $subtopic1 = Topic::create([
+        'created_by_user_id' => $this->user->id,
+        'subject_id' => $this->subject->id,
+        'parent_id' => $parentTopic->id,
+        'sort_order' => 1,
+        'title' => 'Actualizar',
+        'area' => 'Frontend',
+        'is_global' => true,
+    ]);
+
+    $subtopic2 = Topic::create([
+        'created_by_user_id' => $this->user->id,
+        'subject_id' => $this->subject->id,
+        'parent_id' => $parentTopic->id,
+        'sort_order' => 2,
+        'title' => 'Nuevo',
+        'area' => 'Frontend',
+        'is_global' => true,
+    ]);
+
+    // Invert the order
+    $response = $this->actingAs($this->user)->post(route('topics.reorder-subtopics', $parentTopic), [
+        'subtopic_ids' => [$subtopic2->id, $subtopic1->id],
+    ]);
+
+    $response->assertRedirect();
+
+    $reloadedSubtopics = $parentTopic->refresh()->subtopics;
+    expect($reloadedSubtopics->first()->id)->toBe($subtopic2->id)
+        ->and($reloadedSubtopics->last()->id)->toBe($subtopic1->id);
+});
+
+test('teacher can reorder subtopics in course pensum', function () {
+    $period = AcademicPeriod::create([
+        'institution_id' => $this->institution->id,
+        'name' => '2026-I',
+        'start_date' => '2026-01-01',
+        'end_date' => '2026-06-30',
+        'is_active' => true,
+    ]);
+
+    $course = Course::create([
+        'institution_id' => $this->institution->id,
+        'academic_period_id' => $period->id,
+        'subject_id' => $this->subject->id,
+        'teacher_id' => $this->user->id,
+        'name' => 'Programación Web - Grupo Reorder',
+        'status' => 'active',
+    ]);
+
+    $courseParent = CourseTopic::create([
+        'course_id' => $course->id,
+        'title' => 'Componentes React',
+        'sort_order' => 1,
+    ]);
+
+    $courseSub1 = CourseTopic::create([
+        'course_id' => $course->id,
+        'parent_id' => $courseParent->id,
+        'title' => 'Subtema Alfa',
+        'sort_order' => 1,
+    ]);
+
+    $courseSub2 = CourseTopic::create([
+        'course_id' => $course->id,
+        'parent_id' => $courseParent->id,
+        'title' => 'Subtema Beta',
+        'sort_order' => 2,
+    ]);
+
+    $response = $this->actingAs($this->user)->post(route('courses.topics.reorder', $course), [
+        'topic_ids' => [$courseSub2->id, $courseSub1->id],
+    ]);
+
+    $response->assertRedirect();
+
+    $reloadedSubtopics = $courseParent->refresh()->subtopics;
+    expect($reloadedSubtopics->first()->id)->toBe($courseSub2->id)
+        ->and($reloadedSubtopics->last()->id)->toBe($courseSub1->id);
+});

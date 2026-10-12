@@ -45,6 +45,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::put('/topics/{topic}', [TopicController::class, 'update'])->name('topics.update');
     Route::delete('/topics/{topic}', [TopicController::class, 'destroy'])->name('topics.destroy');
     Route::post('/topics/{topic}/promote', [TopicController::class, 'promoteToGlobal'])->name('topics.promote');
+    Route::post('/topics/{topic}/reorder-subtopics', [TopicController::class, 'reorderSubtopics'])->name('topics.reorder-subtopics');
 
     // Students (Padrón Institucional de Estudiantes)
     Route::get('/students', [\App\Http\Controllers\StudentController::class, 'index'])->name('students.index');
