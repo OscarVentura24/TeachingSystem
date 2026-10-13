@@ -54,13 +54,34 @@ class CourseController extends Controller
             }
         }
 
-        $courses = $coursesQuery->latest()->get();
-
         $academicPeriodsQuery = AcademicPeriod::query();
         if ($activeInstitutionId) {
             $academicPeriodsQuery->where('institution_id', $activeInstitutionId);
         }
-        $academicPeriods = $academicPeriodsQuery->get();
+        $academicPeriods = $academicPeriodsQuery->orderByDesc('is_current')->orderByDesc('id')->get();
+
+        // Academic period filtering
+        $selectedPeriodId = $request->input('academic_period_id');
+        if ($selectedPeriodId === 'all') {
+            // Do not filter by period, show all
+        } elseif ($selectedPeriodId) {
+            $coursesQuery->where('academic_period_id', $selectedPeriodId);
+        } else {
+            // Default: if there's a current period, default to it; otherwise show all
+            $currentPeriod = $academicPeriods->firstWhere('is_current', true);
+            if ($currentPeriod) {
+                $coursesQuery->where('academic_period_id', $currentPeriod->id);
+                $selectedPeriodId = (string) $currentPeriod->id;
+            } else {
+                $selectedPeriodId = 'all';
+            }
+        }
+
+        $courses = $coursesQuery
+            ->with(['academicPeriod', 'teachers'])
+            ->withCount(['students', 'courseTopics', 'sessions'])
+            ->latest()
+            ->get();
 
         $institutions = $this->contextService->getAvailableInstitutions($user);
         $activeInstitution = $activeInstitutionId ? Institution::find($activeInstitutionId) : null;
@@ -70,6 +91,8 @@ class CourseController extends Controller
             'institutions' => $institutions,
             'academicPeriods' => $academicPeriods,
             'activeInstitution' => $activeInstitution,
+            'selectedPeriodId' => $selectedPeriodId,
+            'isInstitutionAdmin' => $activeInstitutionId ? $user->isInstitutionAdmin($activeInstitutionId) : $user->isSuperAdmin(),
         ]);
     }
 

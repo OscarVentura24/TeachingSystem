@@ -47,6 +47,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/academic-periods', [\App\Http\Controllers\AcademicPeriodController::class, 'store'])->name('academic-periods.store');
     Route::put('/academic-periods/{academicPeriod}', [\App\Http\Controllers\AcademicPeriodController::class, 'update'])->name('academic-periods.update');
     Route::delete('/academic-periods/{academicPeriod}', [\App\Http\Controllers\AcademicPeriodController::class, 'destroy'])->name('academic-periods.destroy');
+    Route::post('/academic-periods/{academicPeriod}/close', [\App\Http\Controllers\AcademicPeriodController::class, 'close'])->name('academic-periods.close');
+    Route::post('/academic-periods/{academicPeriod}/reopen', [\App\Http\Controllers\AcademicPeriodController::class, 'reopen'])->name('academic-periods.reopen');
+    Route::post('/academic-periods/{academicPeriod}/rollover', [\App\Http\Controllers\AcademicPeriodController::class, 'rollover'])->name('academic-periods.rollover');
 
     // Topics Bank (Global & Institutional)
     Route::get('/topics', [TopicController::class, 'index'])->name('topics.index');

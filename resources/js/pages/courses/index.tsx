@@ -16,6 +16,12 @@ import {
     ArrowUpDown,
     ArrowUp,
     ArrowDown,
+    RotateCw,
+    Lock,
+    Unlock,
+    Sparkles,
+    AlertCircle,
+    Archive,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +35,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import { AcademicPeriodRolloverDialog } from '@/components/academic-period-rollover-dialog';
 
 interface Institution {
     id: number;
@@ -38,6 +45,11 @@ interface Institution {
 interface AcademicPeriod {
     id: number;
     name: string;
+    is_current?: boolean;
+    is_closed?: boolean;
+    closed_at?: string;
+    start_date?: string;
+    end_date?: string;
 }
 
 interface CourseItem {
@@ -61,21 +73,70 @@ interface Props {
     institutions: Institution[];
     academicPeriods: AcademicPeriod[];
     activeInstitution?: { id: number; name: string } | null;
+    selectedPeriodId?: string;
+    isInstitutionAdmin?: boolean;
 }
 
 type CourseSortField = 'name' | 'period' | 'students' | 'topics' | 'sessions' | 'institution';
 type CourseSortDirection = 'asc' | 'desc';
 
-export default function CoursesIndex({ courses, institutions, academicPeriods, activeInstitution }: Props) {
+export default function CoursesIndex({
+    courses,
+    institutions,
+    academicPeriods,
+    activeInstitution,
+    selectedPeriodId = 'all',
+    isInstitutionAdmin = false,
+}: Props) {
     const [openDialog, setOpenDialog] = useState(false);
     const [openEditDialog, setOpenEditDialog] = useState(false);
     const [editingCourse, setEditingCourse] = useState<CourseItem | null>(null);
     const [openPeriodDialog, setOpenPeriodDialog] = useState(false);
+    const [openRolloverDialog, setOpenRolloverDialog] = useState(false);
 
     // Search & Multi-factor sorting state
     const [search, setSearch] = useState('');
     const [sortField, setSortField] = useState<CourseSortField>('name');
     const [sortDirection, setSortDirection] = useState<CourseSortDirection>('asc');
+
+    const handlePeriodChange = (periodId: string) => {
+        router.get(
+            '/courses',
+            { academic_period_id: periodId },
+            { preserveState: true, preserveScroll: true }
+        );
+    };
+
+    const activeSelectedPeriod = useMemo(() => {
+        if (!selectedPeriodId || selectedPeriodId === 'all') {
+            return null;
+        }
+        return academicPeriods.find((p) => p.id.toString() === selectedPeriodId.toString()) || null;
+    }, [academicPeriods, selectedPeriodId]);
+
+    const currentPeriodInSystem = useMemo(() => {
+        return academicPeriods.find((p) => p.is_current) || null;
+    }, [academicPeriods]);
+
+    const handleClosePeriod = (period: AcademicPeriod) => {
+        if (
+            confirm(
+                `¿Estás seguro de cerrar el período "${period.name}"?\n\nAl cerrarlo, sus cursos se archivarán en modo histórico de solo lectura, protegiendo las notas y asistencias.`
+            )
+        ) {
+            router.post(`/academic-periods/${period.id}/close`);
+        }
+    };
+
+    const handleReopenPeriod = (period: AcademicPeriod) => {
+        if (
+            confirm(
+                `¿Deseas reactivar el período "${period.name}"?\n\nLos cursos volverán a estar activos para registrar y editar clases.`
+            )
+        ) {
+            router.post(`/academic-periods/${period.id}/reopen`);
+        }
+    };
 
     const defaultInstId = activeInstitution?.id || institutions[0]?.id || '';
 
@@ -251,7 +312,18 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
                         </p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                        {/* Rollover / Academic Period Transition Wizard */}
+                        {isInstitutionAdmin && (
+                            <Button
+                                variant="outline"
+                                className="gap-2 border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
+                                onClick={() => setOpenRolloverDialog(true)}
+                            >
+                                <Sparkles className="h-4 w-4" /> Transición de Período
+                            </Button>
+                        )}
+
                         {/* Quick create academic period button */}
                         <Dialog open={openPeriodDialog} onOpenChange={setOpenPeriodDialog}>
                             <DialogTrigger asChild>
@@ -546,6 +618,102 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
                     </div>
                 </div>
 
+                {/* Academic Period Switcher & Filter */}
+                {academicPeriods.length > 0 && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 bg-muted/40 p-2.5 rounded-xl border">
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                            <span className="font-semibold text-muted-foreground mr-1 flex items-center gap-1">
+                                <Calendar className="h-3.5 w-3.5" /> Período:
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => handlePeriodChange('all')}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                                    selectedPeriodId === 'all'
+                                        ? 'bg-background shadow-xs text-foreground font-semibold border'
+                                        : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+                                }`}
+                            >
+                                Todos los períodos
+                            </button>
+                            {academicPeriods.map((period) => {
+                                const isSelected = selectedPeriodId === period.id.toString();
+                                return (
+                                    <button
+                                        key={period.id}
+                                        type="button"
+                                        onClick={() => handlePeriodChange(period.id.toString())}
+                                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                                            isSelected
+                                                ? 'bg-background shadow-xs text-foreground font-semibold border border-primary/30'
+                                                : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+                                        }`}
+                                    >
+                                        {period.name}
+                                        {period.is_current && (
+                                            <span className="inline-flex items-center text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-semibold px-1.5 py-0.5 rounded-full">
+                                                Actual
+                                            </span>
+                                        )}
+                                        {period.is_closed && (
+                                            <span className="inline-flex items-center text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-400 font-semibold px-1.5 py-0.5 rounded-full gap-0.5">
+                                                <Lock className="h-2.5 w-2.5" /> Cerrado
+                                            </span>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* Administrative close/reopen toggle for the actively selected period */}
+                        {activeSelectedPeriod && isInstitutionAdmin && (
+                            <div className="flex items-center gap-2">
+                                {activeSelectedPeriod.is_closed ? (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 text-xs border-amber-500/30 hover:bg-amber-500/10 text-amber-800 dark:text-amber-300"
+                                        onClick={() => handleReopenPeriod(activeSelectedPeriod)}
+                                    >
+                                        <Unlock className="h-3 w-3 mr-1" /> Reabrir este Período
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                                        onClick={() => handleClosePeriod(activeSelectedPeriod)}
+                                    >
+                                        <Lock className="h-3 w-3 mr-1" /> Cerrar este Período
+                                    </Button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Banner when viewing a closed academic period */}
+                {activeSelectedPeriod?.is_closed && (
+                    <div className="flex items-center justify-between gap-3 bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 px-4 py-3 rounded-lg text-xs">
+                        <div className="flex items-center gap-2.5">
+                            <Lock className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                            <div>
+                                <span className="font-semibold">Período cerrado ({activeSelectedPeriod.name}):</span> Modo histórico de solo lectura. Todas las calificaciones, asistencias y registros de este ciclo escolar se encuentran resguardados y protegidos de alteraciones accidentales.
+                            </div>
+                        </div>
+                        {isInstitutionAdmin && (
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs border-amber-500/40 hover:bg-amber-500/10 shrink-0"
+                                onClick={() => handleReopenPeriod(activeSelectedPeriod)}
+                            >
+                                <Unlock className="h-3 w-3 mr-1" /> Reabrir
+                            </Button>
+                        )}
+                    </div>
+                )}
+
                 {/* Filters & Sorting */}
                 {courses.length > 0 && (
                     <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
@@ -623,6 +791,11 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
                                             {course.academic_period && (
                                                 <span className="text-xs text-muted-foreground">
                                                     • {course.academic_period.name}
+                                                </span>
+                                            )}
+                                            {course.status === 'archived' && (
+                                                <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground border">
+                                                    <Archive className="h-2.5 w-2.5" /> Archivado
                                                 </span>
                                             )}
                                         </div>
@@ -703,6 +876,14 @@ export default function CoursesIndex({ courses, institutions, academicPeriods, a
                         ))}
                     </div>
                 )}
+
+                {/* Academic Period Rollover Wizard Dialog */}
+                <AcademicPeriodRolloverDialog
+                    open={openRolloverDialog}
+                    onOpenChange={setOpenRolloverDialog}
+                    currentPeriod={currentPeriodInSystem}
+                    courses={courses}
+                />
             </div>
         </>
     );
