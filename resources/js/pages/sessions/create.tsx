@@ -21,6 +21,10 @@ interface Student {
     last_name: string;
     student_id_number?: string;
     preferred_workstation?: string;
+    pivot?: {
+        preferred_workstation?: string;
+        status?: string;
+    };
 }
 
 interface CourseTopic {
@@ -72,8 +76,9 @@ export default function SessionCreate({ course, students, courseTopics }: Props)
     useEffect(() => {
         const initialWorkstations: Record<number, string> = {};
         students.forEach((s) => {
-            if (s.preferred_workstation) {
-                initialWorkstations[s.id] = s.preferred_workstation;
+            const preferred = s.preferred_workstation || s.pivot?.preferred_workstation;
+            if (preferred) {
+                initialWorkstations[s.id] = preferred;
             }
         });
         setWorkstations(initialWorkstations);

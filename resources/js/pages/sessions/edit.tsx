@@ -22,6 +22,10 @@ interface Student {
     last_name: string;
     student_id_number?: string;
     preferred_workstation?: string;
+    pivot?: {
+        preferred_workstation?: string;
+        status?: string;
+    };
 }
 
 interface CourseTopic {
@@ -92,8 +96,9 @@ export default function SessionEdit({ course, session, students, courseTopics }:
             }
         });
         students.forEach((s) => {
-            if (!initial[s.id] && s.preferred_workstation) {
-                initial[s.id] = s.preferred_workstation;
+            const preferred = s.preferred_workstation || s.pivot?.preferred_workstation;
+            if (!initial[s.id] && preferred) {
+                initial[s.id] = preferred;
             }
         });
         return initial;

@@ -261,7 +261,7 @@ class ClassSessionController extends Controller
 
         $session->load([
             'topics:id,title,unit_title',
-            'attendances.student:id,first_name,last_name,student_id_number,preferred_workstation',
+            'attendances.student:id,first_name,last_name,student_id_number',
         ]);
 
         return Inertia::render('sessions/edit', [
