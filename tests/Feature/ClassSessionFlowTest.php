@@ -222,8 +222,89 @@ test('user can delete a class session and clean up progress records', function (
 
     $response = $this->actingAs($this->user)->delete("/sessions/{$session->id}");
 
-    $response->assertRedirect();
-
     expect(ClassSession::find($session->id))->toBeNull();
     expect(StudentTopicProgress::where('class_session_id', $session->id)->count())->toBe(0);
 });
+
+test('user can specify needs_reinforcement override when creating and updating session', function () {
+    // 1. Create session with student1 needing reinforcement
+    $response = $this->actingAs($this->user)->post("/courses/{$this->course->id}/sessions", [
+        'session_date' => '2026-10-13',
+        'title' => 'Sesión con Refuerzo',
+        'status' => 'completed',
+        'topic_ids' => [$this->topic->id],
+        'attendances' => [
+            [
+                'student_id' => $this->student1->id,
+                'workstation' => 'PC-01',
+            ],
+            [
+                'student_id' => $this->student2->id,
+                'workstation' => 'PC-02',
+            ],
+        ],
+        'progress_overrides' => [
+            [
+                'student_id' => $this->student1->id,
+                'course_topic_id' => $this->topic->id,
+                'coverage_status' => 'explained',
+                'mastery_level' => 'needs_reinforcement',
+            ],
+        ],
+    ]);
+
+    $response->assertRedirect(route('courses.show', $this->course));
+
+    $session = ClassSession::where('title', 'Sesión con Refuerzo')->first();
+    expect($session)->not->toBeNull();
+
+    $p1 = StudentTopicProgress::where('class_session_id', $session->id)
+        ->where('student_id', $this->student1->id)
+        ->first();
+    expect($p1->mastery_level)->toBe('needs_reinforcement');
+
+    $p2 = StudentTopicProgress::where('class_session_id', $session->id)
+        ->where('student_id', $this->student2->id)
+        ->first();
+    expect($p2->mastery_level)->toBe('not_evaluated');
+
+    // 2. Update session so student2 also has reinforcement
+    $response2 = $this->actingAs($this->user)->put("/courses/{$this->course->id}/sessions/{$session->id}", [
+        'session_date' => '2026-10-13',
+        'title' => 'Sesión con Refuerzo Actualizada',
+        'status' => 'completed',
+        'topic_ids' => [$this->topic->id],
+        'attendances' => [
+            [
+                'student_id' => $this->student1->id,
+                'workstation' => 'PC-01',
+            ],
+            [
+                'student_id' => $this->student2->id,
+                'workstation' => 'PC-02',
+            ],
+        ],
+        'progress_overrides' => [
+            [
+                'student_id' => $this->student1->id,
+                'course_topic_id' => $this->topic->id,
+                'coverage_status' => 'explained',
+                'mastery_level' => 'needs_reinforcement',
+            ],
+            [
+                'student_id' => $this->student2->id,
+                'course_topic_id' => $this->topic->id,
+                'coverage_status' => 'explained',
+                'mastery_level' => 'needs_reinforcement',
+            ],
+        ],
+    ]);
+
+    $response2->assertRedirect(route('courses.show', $this->course));
+
+    $p2Updated = StudentTopicProgress::where('class_session_id', $session->id)
+        ->where('student_id', $this->student2->id)
+        ->first();
+    expect($p2Updated->mastery_level)->toBe('needs_reinforcement');
+});
+

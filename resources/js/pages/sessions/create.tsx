@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm, router } from '@inertiajs/react';
 import {
     ArrowLeft,
     CheckCircle2,
     Computer,
     Sparkles,
     AlertCircle,
+    AlertTriangle,
     BookOpen,
     Users,
     Save,
@@ -67,10 +68,17 @@ export default function SessionCreate({ course, students, courseTopics }: Props)
     const today = new Date().toISOString().split('T')[0];
 
     const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
+    const [reinforcementStudentIds, setReinforcementStudentIds] = useState<number[]>([]);
     const [workstations, setWorkstations] = useState<Record<number, string>>({});
     const [selectedTopicIds, setSelectedTopicIds] = useState<number[]>([]);
     const [suggestion, setSuggestion] = useState<SuggestionResult | null>(null);
     const [loadingSuggestion, setLoadingSuggestion] = useState(false);
+
+    const toggleStudentReinforcement = (id: number) => {
+        setReinforcementStudentIds((prev) =>
+            prev.includes(id) ? prev.filter((sId) => sId !== id) : [...prev, id]
+        );
+    };
 
     // Initialize workstations from preferred_workstation
     useEffect(() => {
@@ -183,15 +191,26 @@ export default function SessionCreate({ course, students, courseTopics }: Props)
             workstation: workstations[sId] || undefined,
         }));
 
-        setData({
-            ...data,
+        const progress_overrides = reinforcementStudentIds
+            .filter((sId) => selectedStudentIds.includes(sId))
+            .flatMap((sId) =>
+                selectedTopicIds.map((tId) => ({
+                    student_id: sId,
+                    course_topic_id: tId,
+                    coverage_status: 'explained',
+                    mastery_level: 'needs_reinforcement',
+                }))
+            );
+
+        router.post(`/courses/${course.id}/sessions`, {
+            session_date: data.session_date,
+            title: data.title,
+            notes: data.notes,
             status,
             topic_ids: selectedTopicIds,
             attendances,
+            progress_overrides,
         });
-
-        // Trigger post with updated payload
-        post(`/courses/${course.id}/sessions`);
     };
 
     return (
@@ -295,20 +314,48 @@ export default function SessionCreate({ course, students, courseTopics }: Props)
                                             </label>
 
                                             {isSelected && (
-                                                <div className="flex items-center gap-1.5 pl-2">
-                                                    <Computer className="h-3.5 w-3.5 text-muted-foreground" />
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Puesto/PC"
-                                                        value={workstations[student.id] || ''}
-                                                        onChange={(e) =>
-                                                            setWorkstations({
-                                                                ...workstations,
-                                                                [student.id]: e.target.value,
-                                                            })
+                                                <div className="flex items-center gap-2 pl-2">
+                                                    <div className="flex items-center gap-1">
+                                                        <Computer className="h-3.5 w-3.5 text-muted-foreground" />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Puesto/PC"
+                                                            value={workstations[student.id] || ''}
+                                                            onChange={(e) =>
+                                                                setWorkstations({
+                                                                    ...workstations,
+                                                                    [student.id]: e.target.value,
+                                                                })
+                                                            }
+                                                            className="w-20 px-2 py-1 text-[11px] font-mono border rounded bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                                                        />
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            toggleStudentReinforcement(student.id);
+                                                        }}
+                                                        className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded border transition-colors ${
+                                                            reinforcementStudentIds.includes(student.id)
+                                                                ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40 font-semibold'
+                                                                : 'bg-muted/30 text-muted-foreground hover:bg-muted/70 border-border/50'
+                                                        }`}
+                                                        title={
+                                                            reinforcementStudentIds.includes(student.id)
+                                                                ? 'Marcado para refuerzo pedagógico en esta sesión'
+                                                                : 'Marcar si el alumno requiere refuerzo'
                                                         }
-                                                        className="w-20 px-2 py-1 text-[11px] font-mono border rounded bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                                                    />
+                                                    >
+                                                        <AlertTriangle
+                                                            className={`h-3 w-3 ${
+                                                                reinforcementStudentIds.includes(student.id)
+                                                                    ? 'text-amber-600 dark:text-amber-400'
+                                                                    : 'text-muted-foreground/60'
+                                                            }`}
+                                                        />
+                                                        <span>{reinforcementStudentIds.includes(student.id) ? 'Refuerzo' : 'Normal'}</span>
+                                                    </button>
                                                 </div>
                                             )}
                                         </div>

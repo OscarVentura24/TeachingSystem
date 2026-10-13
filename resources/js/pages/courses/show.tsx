@@ -615,6 +615,7 @@ export default function CourseShow({
                             </p>
                         </div>
                         <CoverageMatrix
+                            courseId={course.id}
                             students={course.students || []}
                             topics={course.course_topics || []}
                             progressByStudent={progressByStudent}

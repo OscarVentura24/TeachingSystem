@@ -262,6 +262,7 @@ class ClassSessionController extends Controller
         $session->load([
             'topics:id,title,unit_title',
             'attendances.student:id,first_name,last_name,student_id_number',
+            'progressRecords:id,class_session_id,student_id,course_topic_id,coverage_status,mastery_level',
         ]);
 
         return Inertia::render('sessions/edit', [
@@ -296,6 +297,11 @@ class ClassSessionController extends Controller
             'attendances.*.student_id' => ['required', 'integer', 'exists:students,id'],
             'attendances.*.workstation' => ['nullable', 'string', 'max:50'],
             'attendances.*.notes' => ['nullable', 'string'],
+            'progress_overrides' => ['nullable', 'array'],
+            'progress_overrides.*.student_id' => ['required', 'integer'],
+            'progress_overrides.*.course_topic_id' => ['required', 'integer'],
+            'progress_overrides.*.coverage_status' => ['required', 'in:explained,pending'],
+            'progress_overrides.*.mastery_level' => ['nullable', 'in:not_evaluated,needs_reinforcement,mastered'],
         ]);
 
         DB::transaction(function () use ($validated, $session) {
@@ -323,9 +329,23 @@ class ClassSessionController extends Controller
             // 4. Update Student Progress
             $session->progressRecords()->delete();
             if ($validated['status'] === 'completed') {
+                $overridesMap = [];
+                if (! empty($validated['progress_overrides'])) {
+                    foreach ($validated['progress_overrides'] as $po) {
+                        $key = "{$po['student_id']}_{$po['course_topic_id']}";
+                        $overridesMap[$key] = $po;
+                    }
+                }
+
                 foreach ($validated['attendances'] as $att) {
                     $studentId = $att['student_id'];
                     foreach ($validated['topic_ids'] as $topicId) {
+                        $overrideKey = "{$studentId}_{$topicId}";
+                        $override = $overridesMap[$overrideKey] ?? null;
+
+                        $coverageStatus = $override['coverage_status'] ?? 'explained';
+                        $masteryLevel = $override['mastery_level'] ?? 'not_evaluated';
+
                         StudentTopicProgress::updateOrCreate(
                             [
                                 'class_session_id' => $session->id,
@@ -333,8 +353,9 @@ class ClassSessionController extends Controller
                                 'course_topic_id' => $topicId,
                             ],
                             [
-                                'coverage_status' => 'explained',
-                                'mastery_level' => 'not_evaluated',
+                                'coverage_status' => $coverageStatus,
+                                'mastery_level' => $masteryLevel,
+                                'evaluated_at' => ($masteryLevel !== 'not_evaluated' ? now() : null),
                             ]
                         );
                     }

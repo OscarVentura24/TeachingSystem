@@ -25,6 +25,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/courses/{course}/topics/{courseTopic}/sync', [CourseController::class, 'syncSingleTopic'])->name('courses.topics.sync-single');
     Route::delete('/courses/{course}/topics/{courseTopic}', [CourseController::class, 'removeTopic'])->name('courses.topics.remove');
     Route::post('/courses/{course}/topics/reorder', [CourseController::class, 'reorderTopics'])->name('courses.topics.reorder');
+    Route::post('/courses/{course}/progress', [CourseController::class, 'updateStudentProgress'])->name('courses.progress.update');
     Route::delete('/courses/{course}/students/{student}', [CourseController::class, 'removeStudent'])->name('courses.students.remove');
 
     // Enrollments

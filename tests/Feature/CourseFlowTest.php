@@ -396,3 +396,63 @@ test('user can sync a single course topic from the bank', function () {
     expect($courseTopic->description)->toBe('Quicksort, Mergesort y Búsqueda Binaria');
     expect($courseTopic->sort_order)->toBe(2);
 });
+
+test('user can update student topic progress directly from coverage matrix', function () {
+    $course = Course::create([
+        'institution_id' => $this->institution->id,
+        'academic_period_id' => $this->period->id,
+        'name' => 'Computación 1',
+    ]);
+    $course->teachers()->attach($this->user->id, ['is_primary' => true]);
+
+    $student = Student::create([
+        'institution_id' => $this->institution->id,
+        'first_name' => 'Mateo',
+        'last_name' => 'Silva',
+    ]);
+    $course->students()->attach($student->id);
+
+    $courseTopic = $course->courseTopics()->create([
+        'title' => 'Hardware y Periféricos',
+        'sort_order' => 1,
+        'is_required' => true,
+    ]);
+
+    // 1. Mark as needs_reinforcement
+    $response = $this->actingAs($this->user)->post("/courses/{$course->id}/progress", [
+        'student_id' => $student->id,
+        'course_topic_id' => $courseTopic->id,
+        'status' => 'needs_reinforcement',
+    ]);
+
+    $response->assertRedirect();
+    $progress = StudentTopicProgress::where('student_id', $student->id)
+        ->where('course_topic_id', $courseTopic->id)
+        ->first();
+
+    expect($progress)->not->toBeNull();
+    expect($progress->coverage_status)->toBe('explained');
+    expect($progress->mastery_level)->toBe('needs_reinforcement');
+
+    // 2. Mark as explained
+    $response2 = $this->actingAs($this->user)->post("/courses/{$course->id}/progress", [
+        'student_id' => $student->id,
+        'course_topic_id' => $courseTopic->id,
+        'status' => 'explained',
+    ]);
+
+    $response2->assertRedirect();
+    $progress->refresh();
+    expect($progress->mastery_level)->toBe('not_evaluated');
+
+    // 3. Mark as pending (deletes record)
+    $response3 = $this->actingAs($this->user)->post("/courses/{$course->id}/progress", [
+        'student_id' => $student->id,
+        'course_topic_id' => $courseTopic->id,
+        'status' => 'pending',
+    ]);
+
+    $response3->assertRedirect();
+    expect(StudentTopicProgress::where('student_id', $student->id)->where('course_topic_id', $courseTopic->id)->exists())->toBeFalse();
+});
+

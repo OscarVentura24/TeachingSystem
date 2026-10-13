@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm, router } from '@inertiajs/react';
 import {
     ArrowLeft,
     CheckCircle2,
     Computer,
     Sparkles,
     AlertCircle,
+    AlertTriangle,
     BookOpen,
     Users,
     Save,
@@ -44,6 +45,15 @@ interface Course {
     institution: { id: number; name: string };
 }
 
+interface ProgressRecord {
+    id: number;
+    class_session_id?: number;
+    student_id: number;
+    course_topic_id: number;
+    coverage_status: string;
+    mastery_level: string;
+}
+
 interface SessionData {
     id: number;
     session_date: string;
@@ -57,6 +67,8 @@ interface SessionData {
         workstation?: string;
         notes?: string;
     }>;
+    progress_records?: ProgressRecord[];
+    progressRecords?: ProgressRecord[];
 }
 
 interface SuggestionResult {
@@ -88,6 +100,20 @@ export default function SessionEdit({ course, session, students, courseTopics }:
     const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>(
         session.attendances.map((a) => a.student_id)
     );
+    const [reinforcementStudentIds, setReinforcementStudentIds] = useState<number[]>(() => {
+        const records = session.progress_records || session.progressRecords || [];
+        const ids = records
+            .filter((r) => r.mastery_level === 'needs_reinforcement')
+            .map((r) => r.student_id);
+        return Array.from(new Set(ids));
+    });
+
+    const toggleStudentReinforcement = (id: number) => {
+        setReinforcementStudentIds((prev) =>
+            prev.includes(id) ? prev.filter((sId) => sId !== id) : [...prev, id]
+        );
+    };
+
     const [workstations, setWorkstations] = useState<Record<number, string>>(() => {
         const initial: Record<number, string> = {};
         session.attendances.forEach((a) => {
@@ -209,14 +235,26 @@ export default function SessionEdit({ course, session, students, courseTopics }:
             workstation: workstations[sId] || undefined,
         }));
 
-        setData({
-            ...data,
+        const progress_overrides = reinforcementStudentIds
+            .filter((sId) => selectedStudentIds.includes(sId))
+            .flatMap((sId) =>
+                selectedTopicIds.map((tId) => ({
+                    student_id: sId,
+                    course_topic_id: tId,
+                    coverage_status: 'explained',
+                    mastery_level: 'needs_reinforcement',
+                }))
+            );
+
+        router.put(`/courses/${course.id}/sessions/${session.id}`, {
+            session_date: data.session_date,
+            title: data.title,
+            notes: data.notes,
             status: newStatus,
             topic_ids: selectedTopicIds,
             attendances,
+            progress_overrides,
         });
-
-        put(`/courses/${course.id}/sessions/${session.id}`);
     };
 
     return (
@@ -329,20 +367,48 @@ export default function SessionEdit({ course, session, students, courseTopics }:
                                             </label>
 
                                             {isSelected && (
-                                                <div className="flex items-center gap-1.5 pl-2">
-                                                    <Computer className="h-3.5 w-3.5 text-muted-foreground" />
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Puesto/PC"
-                                                        value={workstations[student.id] || ''}
-                                                        onChange={(e) =>
-                                                            setWorkstations({
-                                                                ...workstations,
-                                                                [student.id]: e.target.value,
-                                                            })
+                                                <div className="flex items-center gap-2 pl-2">
+                                                    <div className="flex items-center gap-1">
+                                                        <Computer className="h-3.5 w-3.5 text-muted-foreground" />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Puesto/PC"
+                                                            value={workstations[student.id] || ''}
+                                                            onChange={(e) =>
+                                                                setWorkstations({
+                                                                    ...workstations,
+                                                                    [student.id]: e.target.value,
+                                                                })
+                                                            }
+                                                            className="h-7 w-20 text-xs px-2 rounded border bg-background text-foreground font-mono"
+                                                        />
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            toggleStudentReinforcement(student.id);
+                                                        }}
+                                                        className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded border transition-colors ${
+                                                            reinforcementStudentIds.includes(student.id)
+                                                                ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40 font-semibold'
+                                                                : 'bg-muted/30 text-muted-foreground hover:bg-muted/70 border-border/50'
+                                                        }`}
+                                                        title={
+                                                            reinforcementStudentIds.includes(student.id)
+                                                                ? 'Marcado para refuerzo pedagógico en esta sesión'
+                                                                : 'Marcar si el alumno requiere refuerzo'
                                                         }
-                                                        className="h-7 w-24 text-xs px-2 rounded border bg-background text-foreground font-mono"
-                                                    />
+                                                    >
+                                                        <AlertTriangle
+                                                            className={`h-3 w-3 ${
+                                                                reinforcementStudentIds.includes(student.id)
+                                                                    ? 'text-amber-600 dark:text-amber-400'
+                                                                    : 'text-muted-foreground/60'
+                                                            }`}
+                                                        />
+                                                        <span>{reinforcementStudentIds.includes(student.id) ? 'Refuerzo' : 'Normal'}</span>
+                                                    </button>
                                                 </div>
                                             )}
                                         </div>

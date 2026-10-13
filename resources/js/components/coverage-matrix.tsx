@@ -1,5 +1,13 @@
 import React, { useState, useMemo } from 'react';
-import { CheckCircle2, AlertTriangle, Circle, Search } from 'lucide-react';
+import { router } from '@inertiajs/react';
+import { CheckCircle2, AlertTriangle, Circle, Search, Loader2 } from 'lucide-react';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 
 interface Student {
     id: number;
@@ -28,14 +36,46 @@ interface ProgressRecord {
     evaluation_notes?: string;
 }
 
+interface ActiveCell {
+    studentId: number;
+    studentName: string;
+    topicId: number;
+    topicTitle: string;
+    currentStatus: 'explained' | 'needs_reinforcement' | 'pending';
+}
+
 interface Props {
+    courseId?: number;
     students: Student[];
     topics: CourseTopic[];
     progressByStudent: Record<number, ProgressRecord[]>;
 }
 
-export function CoverageMatrix({ students, topics, progressByStudent }: Props) {
+export function CoverageMatrix({ courseId, students, topics, progressByStudent }: Props) {
     const [search, setSearch] = useState('');
+    const [activeCell, setActiveCell] = useState<ActiveCell | null>(null);
+    const [isUpdating, setIsUpdating] = useState(false);
+
+    const handleUpdateStatus = (status: 'explained' | 'needs_reinforcement' | 'pending') => {
+        if (!courseId || !activeCell) return;
+        setIsUpdating(true);
+        router.post(
+            `/courses/${courseId}/progress`,
+            {
+                student_id: activeCell.studentId,
+                course_topic_id: activeCell.topicId,
+                status,
+            },
+            {
+                preserveScroll: true,
+                preserveState: true,
+                onFinish: () => {
+                    setIsUpdating(false);
+                    setActiveCell(null);
+                },
+            }
+        );
+    };
 
     const filteredStudents = students.filter((s) => {
         const query = search.toLowerCase();
@@ -118,7 +158,12 @@ export function CoverageMatrix({ students, topics, progressByStudent }: Props) {
                         className="w-full pl-9 pr-4 py-1.5 text-sm bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
                     />
                 </div>
-                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                    {courseId && (
+                        <span className="text-[11px] text-primary font-medium mr-1 hidden sm:inline">
+                            💡 Clic en cualquier celda para cambiar su estado
+                        </span>
+                    )}
                     <span className="flex items-center gap-1.5">
                         <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> Explicado
                     </span>
@@ -195,10 +240,35 @@ export function CoverageMatrix({ students, topics, progressByStudent }: Props) {
                                     </td>
                                     {evaluableTopics.map((item) => {
                                         const progress = getStudentTopicProgress(student.id, item.id);
+                                        const isInteractive = Boolean(courseId);
+
+                                        const onCellClick = () => {
+                                            if (!isInteractive) return;
+                                            const currentStatus = !progress
+                                                ? 'pending'
+                                                : progress.mastery_level === 'needs_reinforcement'
+                                                ? 'needs_reinforcement'
+                                                : 'explained';
+
+                                            setActiveCell({
+                                                studentId: student.id,
+                                                studentName: `${student.last_name}, ${student.first_name}`,
+                                                topicId: item.id,
+                                                topicTitle: item.fullLabel,
+                                                currentStatus,
+                                            });
+                                        };
 
                                         if (!progress) {
                                             return (
-                                                <td key={item.id} className="px-3 py-2.5 text-center">
+                                                <td
+                                                    key={item.id}
+                                                    onClick={onCellClick}
+                                                    className={`px-3 py-2.5 text-center transition-colors ${
+                                                        isInteractive ? 'cursor-pointer hover:bg-muted/60' : ''
+                                                    }`}
+                                                    title={isInteractive ? 'Pendiente (Clic para modificar)' : 'Pendiente'}
+                                                >
                                                     <Circle className="h-4 w-4 mx-auto text-muted-foreground/30" />
                                                 </td>
                                             );
@@ -206,20 +276,32 @@ export function CoverageMatrix({ students, topics, progressByStudent }: Props) {
 
                                         if (progress.mastery_level === 'needs_reinforcement') {
                                             return (
-                                                <td key={item.id} className="px-3 py-2.5 text-center bg-amber-500/10">
+                                                <td
+                                                    key={item.id}
+                                                    onClick={onCellClick}
+                                                    className={`px-3 py-2.5 text-center bg-amber-500/10 transition-colors ${
+                                                        isInteractive ? 'cursor-pointer hover:bg-amber-500/20' : ''
+                                                    }`}
+                                                    title={isInteractive ? 'Requiere Refuerzo (Clic para modificar)' : 'Explicado (Requiere Refuerzo)'}
+                                                >
                                                     <AlertTriangle
                                                         className="h-4 w-4 mx-auto text-amber-600 dark:text-amber-400"
-                                                        title="Explicado (Requiere Refuerzo)"
                                                     />
                                                 </td>
                                             );
                                         }
 
                                         return (
-                                            <td key={item.id} className="px-3 py-2.5 text-center bg-emerald-500/10">
+                                            <td
+                                                key={item.id}
+                                                onClick={onCellClick}
+                                                className={`px-3 py-2.5 text-center bg-emerald-500/10 transition-colors ${
+                                                    isInteractive ? 'cursor-pointer hover:bg-emerald-500/20' : ''
+                                                }`}
+                                                title={isInteractive ? 'Explicado (Clic para modificar)' : (progress.mastery_level === 'mastered' ? 'Dominado' : 'Explicado')}
+                                            >
                                                 <CheckCircle2
                                                     className="h-4 w-4 mx-auto text-emerald-600 dark:text-emerald-400"
-                                                    title={progress.mastery_level === 'mastered' ? 'Dominado' : 'Explicado'}
                                                 />
                                             </td>
                                         );
@@ -230,6 +312,94 @@ export function CoverageMatrix({ students, topics, progressByStudent }: Props) {
                     </tbody>
                 </table>
             </div>
+
+            {/* Modal de edición rápida de estado */}
+            <Dialog open={!!activeCell} onOpenChange={(open) => !open && !isUpdating && setActiveCell(null)}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="text-base font-semibold">
+                            Cambiar Estado del Tema
+                        </DialogTitle>
+                        <DialogDescription className="text-xs">
+                            <span className="font-semibold text-foreground">{activeCell?.studentName}</span>
+                            <br />
+                            <span className="text-muted-foreground">{activeCell?.topicTitle}</span>
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="grid grid-cols-1 gap-2.5 pt-2">
+                        <button
+                            type="button"
+                            disabled={isUpdating}
+                            onClick={() => handleUpdateStatus('explained')}
+                            className={`flex items-start gap-3 p-3 rounded-lg border text-left transition-all ${
+                                activeCell?.currentStatus === 'explained'
+                                    ? 'border-emerald-500 bg-emerald-500/15 text-foreground ring-1 ring-emerald-500'
+                                    : 'hover:bg-muted/60 border-border'
+                            }`}
+                        >
+                            <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                                <span className="text-xs font-semibold block text-emerald-700 dark:text-emerald-300">
+                                    Explicado
+                                </span>
+                                <span className="text-[11px] text-muted-foreground block">
+                                    Tema cubierto y acreditado normalmente para el estudiante.
+                                </span>
+                            </div>
+                        </button>
+
+                        <button
+                            type="button"
+                            disabled={isUpdating}
+                            onClick={() => handleUpdateStatus('needs_reinforcement')}
+                            className={`flex items-start gap-3 p-3 rounded-lg border text-left transition-all ${
+                                activeCell?.currentStatus === 'needs_reinforcement'
+                                    ? 'border-amber-500 bg-amber-500/15 text-foreground ring-1 ring-amber-500'
+                                    : 'hover:bg-muted/60 border-border'
+                            }`}
+                        >
+                            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                                <span className="text-xs font-semibold block text-amber-700 dark:text-amber-300">
+                                    Requiere Refuerzo
+                                </span>
+                                <span className="text-[11px] text-muted-foreground block">
+                                    El estudiante asistió pero necesita repaso, práctica guiada o apoyo individual.
+                                </span>
+                            </div>
+                        </button>
+
+                        <button
+                            type="button"
+                            disabled={isUpdating}
+                            onClick={() => handleUpdateStatus('pending')}
+                            className={`flex items-start gap-3 p-3 rounded-lg border text-left transition-all ${
+                                activeCell?.currentStatus === 'pending'
+                                    ? 'border-muted-foreground/60 bg-muted text-foreground ring-1 ring-muted-foreground/40'
+                                    : 'hover:bg-muted/60 border-border'
+                            }`}
+                        >
+                            <Circle className="h-5 w-5 text-muted-foreground/60 shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                                <span className="text-xs font-semibold block text-foreground">
+                                    Pendiente
+                                </span>
+                                <span className="text-[11px] text-muted-foreground block">
+                                    Remover la acreditación; el tema vuelve a estado pendiente.
+                                </span>
+                            </div>
+                        </button>
+                    </div>
+
+                    {isUpdating && (
+                        <div className="flex items-center justify-center gap-2 pt-2 text-xs text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                            <span>Guardando cambios...</span>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

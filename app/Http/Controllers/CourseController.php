@@ -598,4 +598,76 @@ class CourseController extends Controller
 
         return back()->with('success', 'Estudiante desmatriculado del curso.');
     }
+
+    /**
+     * Update student topic progress directly from coverage matrix.
+     */
+    public function updateStudentProgress(Request $request, Course $course): RedirectResponse
+    {
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para gestionar este curso.');
+        }
+
+        $validated = $request->validate([
+            'student_id' => ['required', 'integer', 'exists:students,id'],
+            'course_topic_id' => ['required', 'integer', 'exists:course_topics,id'],
+            'status' => ['required', 'in:explained,needs_reinforcement,pending'],
+        ]);
+
+        $courseTopic = CourseTopic::where('course_id', $course->id)
+            ->where('id', $validated['course_topic_id'])
+            ->firstOrFail();
+
+        $studentId = $validated['student_id'];
+        $courseTopicId = $courseTopic->id;
+        $status = $validated['status'];
+
+        if ($status === 'pending') {
+            StudentTopicProgress::where('student_id', $studentId)
+                ->where('course_topic_id', $courseTopicId)
+                ->delete();
+        } elseif ($status === 'needs_reinforcement') {
+            $existing = StudentTopicProgress::where('student_id', $studentId)
+                ->where('course_topic_id', $courseTopicId)
+                ->latest()
+                ->first();
+
+            if ($existing) {
+                $existing->update([
+                    'coverage_status' => 'explained',
+                    'mastery_level' => 'needs_reinforcement',
+                    'evaluated_at' => now(),
+                ]);
+            } else {
+                StudentTopicProgress::create([
+                    'student_id' => $studentId,
+                    'course_topic_id' => $courseTopicId,
+                    'coverage_status' => 'explained',
+                    'mastery_level' => 'needs_reinforcement',
+                    'evaluated_at' => now(),
+                ]);
+            }
+        } else { // 'explained'
+            $existing = StudentTopicProgress::where('student_id', $studentId)
+                ->where('course_topic_id', $courseTopicId)
+                ->latest()
+                ->first();
+
+            if ($existing) {
+                $existing->update([
+                    'coverage_status' => 'explained',
+                    'mastery_level' => 'not_evaluated',
+                ]);
+            } else {
+                StudentTopicProgress::create([
+                    'student_id' => $studentId,
+                    'course_topic_id' => $courseTopicId,
+                    'coverage_status' => 'explained',
+                    'mastery_level' => 'not_evaluated',
+                ]);
+            }
+        }
+
+        return back()->with('success', 'Progreso del estudiante actualizado.');
+    }
 }
