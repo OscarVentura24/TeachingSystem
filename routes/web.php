@@ -20,6 +20,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::put('/courses/{course}', [CourseController::class, 'update'])->name('courses.update');
     Route::delete('/courses/{course}', [CourseController::class, 'destroy'])->name('courses.destroy');
     Route::post('/courses/{course}/topics', [CourseController::class, 'addTopic'])->name('courses.topics.add');
+    Route::post('/courses/{course}/topics/bulk-import', [CourseController::class, 'bulkAddTopics'])->name('courses.topics.bulk-import');
     Route::delete('/courses/{course}/topics/{courseTopic}', [CourseController::class, 'removeTopic'])->name('courses.topics.remove');
     Route::post('/courses/{course}/topics/reorder', [CourseController::class, 'reorderTopics'])->name('courses.topics.reorder');
     Route::delete('/courses/{course}/students/{student}', [CourseController::class, 'removeStudent'])->name('courses.students.remove');

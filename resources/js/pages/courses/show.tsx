@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Head, Link, useForm, router } from '@inertiajs/react';
 import {
     ArrowLeft,
@@ -20,6 +20,9 @@ import {
     FolderTree,
     ChevronUp,
     ChevronDown,
+    Download,
+    Search,
+    AlertCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,9 +37,12 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 
 interface CourseTopic {
     id: number;
+    topic_id?: number | null;
     parent_id?: number | null;
     title: string;
     unit_title?: string;
@@ -120,6 +126,10 @@ export default function CourseShow({
 }: Props) {
     const [activeTab, setActiveTab] = useState<'matrix' | 'pensum' | 'students' | 'sessions' | 'teachers'>('matrix');
     const [openAddTopicDialog, setOpenAddTopicDialog] = useState(false);
+    const [openBulkImportDialog, setOpenBulkImportDialog] = useState(false);
+    const [selectedBulkTopicIds, setSelectedBulkTopicIds] = useState<number[]>([]);
+    const [bulkSearchQuery, setBulkSearchQuery] = useState('');
+    const [isBulkImporting, setIsBulkImporting] = useState(false);
     const [openEnrollDialog, setOpenEnrollDialog] = useState(false);
     const [openAddTeacherDialog, setOpenAddTeacherDialog] = useState(false);
     const [openEditCourseDialog, setOpenEditCourseDialog] = useState(false);
@@ -146,6 +156,89 @@ export default function CourseShow({
         unit_title: '',
         description: '',
     });
+
+    // Track topics already present in this course pensum to prevent duplicate additions
+    const addedTopicIds = useMemo(() => {
+        const ids = new Set<number>();
+        course.course_topics.forEach((ct) => {
+            if (ct.topic_id) ids.add(ct.topic_id);
+            if (ct.subtopics) {
+                ct.subtopics.forEach((sub) => {
+                    if (sub.topic_id) ids.add(sub.topic_id);
+                });
+            }
+        });
+        return ids;
+    }, [course.course_topics]);
+
+    const addedTopicTitles = useMemo(() => {
+        const titles = new Set<string>();
+        course.course_topics.forEach((ct) => {
+            titles.add(ct.title.trim().toLowerCase());
+            if (ct.subtopics) {
+                ct.subtopics.forEach((sub) => {
+                    titles.add(sub.title.trim().toLowerCase());
+                });
+            }
+        });
+        return titles;
+    }, [course.course_topics]);
+
+    const availableGlobalTopics = useMemo(() => {
+        return globalTopics.filter(
+            (gt) => !addedTopicIds.has(gt.id) && !addedTopicTitles.has(gt.title.trim().toLowerCase())
+        );
+    }, [globalTopics, addedTopicIds, addedTopicTitles]);
+
+    const filteredBulkTopics = useMemo(() => {
+        if (!bulkSearchQuery.trim()) return availableGlobalTopics;
+        const q = bulkSearchQuery.toLowerCase();
+        return availableGlobalTopics.filter(
+            (t) =>
+                t.title.toLowerCase().includes(q) ||
+                (t.area && t.area.toLowerCase().includes(q)) ||
+                (t.unit_title && t.unit_title.toLowerCase().includes(q))
+        );
+    }, [availableGlobalTopics, bulkSearchQuery]);
+
+    const handleToggleBulkSelectAll = () => {
+        if (filteredBulkTopics.length === 0) return;
+        const isAllSelected = filteredBulkTopics.every((t) => selectedBulkTopicIds.includes(t.id));
+        if (isAllSelected) {
+            const filteredSet = new Set(filteredBulkTopics.map((t) => t.id));
+            setSelectedBulkTopicIds((prev) => prev.filter((id) => !filteredSet.has(id)));
+        } else {
+            const newSelection = new Set([...selectedBulkTopicIds, ...filteredBulkTopics.map((t) => t.id)]);
+            setSelectedBulkTopicIds(Array.from(newSelection));
+        }
+    };
+
+    const handleToggleBulkTopic = (id: number) => {
+        setSelectedBulkTopicIds((prev) =>
+            prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+        );
+    };
+
+    const handleBulkImportSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (selectedBulkTopicIds.length === 0) return;
+        setIsBulkImporting(true);
+        router.post(
+            `/courses/${course.id}/topics/bulk-import`,
+            { topic_ids: selectedBulkTopicIds },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setOpenBulkImportDialog(false);
+                    setSelectedBulkTopicIds([]);
+                    setBulkSearchQuery('');
+                },
+                onFinish: () => {
+                    setIsBulkImporting(false);
+                },
+            }
+        );
+    };
 
     const handleOpenAddSubtopic = (parentCourseTopic: CourseTopic) => {
         addTopicForm.reset();
@@ -462,7 +555,7 @@ export default function CourseShow({
                 {/* Tab 2: Pensum Designer */}
                 {activeTab === 'pensum' && (
                     <div className="space-y-4">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div>
                                 <h3 className="text-base font-semibold text-foreground">Temario del Curso (Pensum)</h3>
                                 <p className="text-xs text-muted-foreground">
@@ -470,134 +563,327 @@ export default function CourseShow({
                                 </p>
                             </div>
 
-                            <Dialog open={openAddTopicDialog} onOpenChange={setOpenAddTopicDialog}>
-                                <DialogTrigger asChild>
-                                    <Button size="sm" className="gap-2">
-                                        <Plus className="h-4 w-4" /> Agregar Tema al Pensum
+                            <div className="flex items-center gap-2">
+                                {availableGlobalTopics.length > 0 && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-2"
+                                        onClick={() => {
+                                            setSelectedBulkTopicIds(availableGlobalTopics.map((t) => t.id));
+                                            setOpenBulkImportDialog(true);
+                                        }}
+                                    >
+                                        <Download className="h-4 w-4" />
+                                        Importar del Banco ({availableGlobalTopics.length})
                                     </Button>
-                                </DialogTrigger>
-                                <DialogContent className="sm:max-w-lg">
-                                    <DialogHeader>
-                                        <DialogTitle>Agregar Tema al Pensum</DialogTitle>
-                                        <DialogDescription>
-                                            Selecciona un tema existente del Banco Global o escribe uno nuevo.
-                                        </DialogDescription>
-                                    </DialogHeader>
+                                )}
 
-                                    <form onSubmit={handleAddTopicSubmit} className="space-y-4 pt-2">
-                                        {globalTopics.length > 0 && (
-                                            <div className="space-y-1.5 bg-muted/30 p-3 rounded-lg border">
-                                                <Label className="text-xs flex items-center gap-1.5 mb-1.5">
-                                                    <Sparkles className="h-3.5 w-3.5 text-primary" /> Cargar desde Banco Global
-                                                </Label>
-                                                <SearchableSelect
-                                                    options={globalTopics.map((gt) => ({
-                                                        value: gt.id,
-                                                        label: gt.title,
-                                                        subLabel: `[${gt.area}] ${gt.unit_title ? `• ${gt.unit_title}` : ''}${gt.subtopics && gt.subtopics.length > 0 ? ` (${gt.subtopics.length} subtemas)` : ''}`,
-                                                    }))}
-                                                    value={addTopicForm.data.topic_id}
-                                                    onChange={handleSelectGlobalTopic}
-                                                    placeholder="Buscar tema del banco global..."
-                                                    searchPlaceholder="Buscar por título, área o unidad..."
+                                <Dialog open={openAddTopicDialog} onOpenChange={setOpenAddTopicDialog}>
+                                    <DialogTrigger asChild>
+                                        <Button size="sm" className="gap-2">
+                                            <Plus className="h-4 w-4" /> Agregar Tema al Pensum
+                                        </Button>
+                                    </DialogTrigger>
+                                    <DialogContent className="sm:max-w-lg">
+                                        <DialogHeader>
+                                            <DialogTitle>Agregar Tema al Pensum</DialogTitle>
+                                            <DialogDescription>
+                                                Selecciona un tema existente del Banco Global o escribe uno nuevo.
+                                            </DialogDescription>
+                                        </DialogHeader>
+
+                                        <form onSubmit={handleAddTopicSubmit} className="space-y-4 pt-2">
+                                            {availableGlobalTopics.length > 0 ? (
+                                                <div className="space-y-1.5 bg-muted/30 p-3 rounded-lg border">
+                                                    <div className="flex items-center justify-between">
+                                                        <Label className="text-xs flex items-center gap-1.5">
+                                                            <Sparkles className="h-3.5 w-3.5 text-primary" /> Cargar desde Banco Global
+                                                        </Label>
+                                                        <Button
+                                                            type="button"
+                                                            variant="link"
+                                                            size="sm"
+                                                            className="h-auto p-0 text-xs text-primary"
+                                                            onClick={() => {
+                                                                setOpenAddTopicDialog(false);
+                                                                setSelectedBulkTopicIds(availableGlobalTopics.map((t) => t.id));
+                                                                setOpenBulkImportDialog(true);
+                                                            }}
+                                                        >
+                                                            Importar en lote ({availableGlobalTopics.length})
+                                                        </Button>
+                                                    </div>
+                                                    <SearchableSelect
+                                                        options={availableGlobalTopics.map((gt) => ({
+                                                            value: gt.id,
+                                                            label: gt.title,
+                                                            subLabel: `[${gt.area}] ${gt.unit_title ? `• ${gt.unit_title}` : ''}${gt.subtopics && gt.subtopics.length > 0 ? ` (${gt.subtopics.length} subtemas)` : ''}`,
+                                                        }))}
+                                                        value={addTopicForm.data.topic_id}
+                                                        onChange={handleSelectGlobalTopic}
+                                                        placeholder="Buscar tema del banco global..."
+                                                        searchPlaceholder="Buscar por título, área o unidad..."
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <div className="rounded-lg border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground flex items-center gap-2">
+                                                    <AlertCircle className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                                    <span>Todos los temas del Banco Global ya están presentes en el pensum de este curso. Puedes redactar un tema personalizado a continuación.</span>
+                                                </div>
+                                            )}
+
+                                            {course.course_topics.length > 0 && (
+                                                <div className="space-y-1.5 bg-muted/20 p-3 rounded-lg border border-dashed">
+                                                    <div className="flex items-center justify-between">
+                                                        <Label htmlFor="parent_course_topic_id" className="text-xs font-semibold flex items-center gap-1.5">
+                                                            <FolderTree className="h-3.5 w-3.5 text-primary" /> ¿Es un Subtema? (Opcional)
+                                                        </Label>
+                                                        {addTopicForm.data.parent_id && (
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-5 text-[11px] text-muted-foreground hover:text-foreground px-1.5"
+                                                                onClick={() => addTopicForm.setData('parent_id', '')}
+                                                            >
+                                                                Tema Principal
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                    <select
+                                                        id="parent_course_topic_id"
+                                                        value={addTopicForm.data.parent_id}
+                                                        onChange={(e) => {
+                                                            const pId = e.target.value;
+                                                            addTopicForm.setData('parent_id', pId);
+                                                            if (pId) {
+                                                                const parent = course.course_topics.find((ct) => String(ct.id) === String(pId));
+                                                                if (parent?.unit_title && !addTopicForm.data.unit_title) {
+                                                                    addTopicForm.setData('unit_title', parent.unit_title);
+                                                                }
+                                                            }
+                                                        }}
+                                                        className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+                                                    >
+                                                        <option value="">Ninguno (Agregar como Tema Principal)</option>
+                                                        {course.course_topics.map((ct) => (
+                                                            <option key={ct.id} value={ct.id}>
+                                                                {ct.title} {ct.unit_title ? `(${ct.unit_title})` : ''}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            )}
+
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor="topic_title">Título del Tema *</Label>
+                                                <Input
+                                                    id="topic_title"
+                                                    value={addTopicForm.data.title}
+                                                    onChange={(e) => addTopicForm.setData('title', e.target.value)}
+                                                    placeholder="Ej: Introducción a Algoritmos"
+                                                    required
                                                 />
                                             </div>
-                                        )}
 
-                                        {course.course_topics.length > 0 && (
-                                            <div className="space-y-1.5 bg-muted/20 p-3 rounded-lg border border-dashed">
-                                                <div className="flex items-center justify-between">
-                                                    <Label htmlFor="parent_course_topic_id" className="text-xs font-semibold flex items-center gap-1.5">
-                                                        <FolderTree className="h-3.5 w-3.5 text-primary" /> ¿Es un Subtema? (Opcional)
-                                                    </Label>
-                                                    {addTopicForm.data.parent_id && (
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor="unit_title">Unidad / Módulo</Label>
+                                                <Input
+                                                    id="unit_title"
+                                                    value={addTopicForm.data.unit_title}
+                                                    onChange={(e) => addTopicForm.setData('unit_title', e.target.value)}
+                                                    placeholder="Ej: Unidad 1: Fundamentos"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor="topic_desc">Descripción u Objetivos</Label>
+                                                <Input
+                                                    id="topic_desc"
+                                                    value={addTopicForm.data.description}
+                                                    onChange={(e) => addTopicForm.setData('description', e.target.value)}
+                                                    placeholder="Breve detalle de lo que aprenderán"
+                                                />
+                                            </div>
+
+                                            <div className="flex justify-end gap-2 pt-2">
+                                                <Button type="button" variant="outline" onClick={() => setOpenAddTopicDialog(false)}>
+                                                    Cancelar
+                                                </Button>
+                                                <Button type="submit" disabled={addTopicForm.processing}>
+                                                    Guardar en Pensum
+                                                </Button>
+                                            </div>
+                                        </form>
+                                    </DialogContent>
+                                </Dialog>
+
+                                {/* Bulk Import Dialog */}
+                                <Dialog open={openBulkImportDialog} onOpenChange={setOpenBulkImportDialog}>
+                                    <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
+                                        <DialogHeader>
+                                            <DialogTitle className="flex items-center gap-2">
+                                                <Download className="h-5 w-5 text-primary" />
+                                                Importar Temas del Banco Global
+                                            </DialogTitle>
+                                            <DialogDescription>
+                                                Selecciona uno, varios o todos los temas disponibles del banco para agregarlos automáticamente al pensum de este curso.
+                                            </DialogDescription>
+                                        </DialogHeader>
+
+                                        <form onSubmit={handleBulkImportSubmit} className="flex flex-col flex-1 min-h-0 space-y-4 pt-2">
+                                            {/* Search and Selection Toolbar */}
+                                            <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between pb-2 border-b">
+                                                <div className="relative flex-1">
+                                                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                                    <Input
+                                                        type="search"
+                                                        placeholder="Filtrar por título, área o unidad..."
+                                                        value={bulkSearchQuery}
+                                                        onChange={(e) => setBulkSearchQuery(e.target.value)}
+                                                        className="pl-8 text-xs h-9"
+                                                    />
+                                                </div>
+                                                <div className="flex items-center gap-2 shrink-0">
+                                                    <Button
+                                                        type="button"
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        className="text-xs h-9"
+                                                        onClick={handleToggleBulkSelectAll}
+                                                        disabled={filteredBulkTopics.length === 0}
+                                                    >
+                                                        {filteredBulkTopics.length > 0 &&
+                                                        filteredBulkTopics.every((t) => selectedBulkTopicIds.includes(t.id))
+                                                            ? 'Deseleccionar Filtrados'
+                                                            : `Seleccionar Todos (${filteredBulkTopics.length})`}
+                                                    </Button>
+                                                    {selectedBulkTopicIds.length > 0 && (
                                                         <Button
                                                             type="button"
                                                             variant="ghost"
                                                             size="sm"
-                                                            className="h-5 text-[11px] text-muted-foreground hover:text-foreground px-1.5"
-                                                            onClick={() => addTopicForm.setData('parent_id', '')}
+                                                            className="text-xs h-9 text-muted-foreground hover:text-foreground"
+                                                            onClick={() => setSelectedBulkTopicIds([])}
                                                         >
-                                                            Tema Principal
+                                                            Limpiar
                                                         </Button>
                                                     )}
                                                 </div>
-                                                <select
-                                                    id="parent_course_topic_id"
-                                                    value={addTopicForm.data.parent_id}
-                                                    onChange={(e) => {
-                                                        const pId = e.target.value;
-                                                        addTopicForm.setData('parent_id', pId);
-                                                        if (pId) {
-                                                            const parent = course.course_topics.find((ct) => String(ct.id) === String(pId));
-                                                            if (parent?.unit_title && !addTopicForm.data.unit_title) {
-                                                                addTopicForm.setData('unit_title', parent.unit_title);
-                                                            }
-                                                        }
-                                                    }}
-                                                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
-                                                >
-                                                    <option value="">Ninguno (Agregar como Tema Principal)</option>
-                                                    {course.course_topics.map((ct) => (
-                                                        <option key={ct.id} value={ct.id}>
-                                                            {ct.title} {ct.unit_title ? `(${ct.unit_title})` : ''}
-                                                        </option>
-                                                    ))}
-                                                </select>
                                             </div>
-                                        )}
 
-                                        <div className="space-y-1.5">
-                                            <Label htmlFor="topic_title">Título del Tema *</Label>
-                                            <Input
-                                                id="topic_title"
-                                                value={addTopicForm.data.title}
-                                                onChange={(e) => addTopicForm.setData('title', e.target.value)}
-                                                placeholder="Ej: Introducción a Algoritmos"
-                                                required
-                                            />
-                                        </div>
+                                            {/* Topics List with scroll */}
+                                            <div className="flex-1 overflow-y-auto space-y-2 max-h-[380px] pr-1">
+                                                {filteredBulkTopics.length === 0 ? (
+                                                    <div className="p-8 text-center text-muted-foreground border rounded-lg border-dashed">
+                                                        {bulkSearchQuery ? (
+                                                            <p className="text-xs">No se encontraron temas disponibles con "{bulkSearchQuery}".</p>
+                                                        ) : (
+                                                            <p className="text-xs">No hay temas disponibles para importar.</p>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    filteredBulkTopics.map((topic) => {
+                                                        const isSelected = selectedBulkTopicIds.includes(topic.id);
+                                                        return (
+                                                            <div
+                                                                key={topic.id}
+                                                                onClick={() => handleToggleBulkTopic(topic.id)}
+                                                                className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                                                                    isSelected
+                                                                        ? 'border-primary/50 bg-primary/5'
+                                                                        : 'hover:bg-muted/30 border-border'
+                                                                }`}
+                                                            >
+                                                                <Checkbox
+                                                                    checked={isSelected}
+                                                                    onCheckedChange={() => handleToggleBulkTopic(topic.id)}
+                                                                    className="mt-0.5"
+                                                                />
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                                        <span className="text-xs font-semibold text-foreground">
+                                                                            {topic.title}
+                                                                        </span>
+                                                                        <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4">
+                                                                            {topic.area}
+                                                                        </Badge>
+                                                                        {topic.unit_title && (
+                                                                            <span className="text-[11px] text-muted-foreground">
+                                                                                {topic.unit_title}
+                                                                            </span>
+                                                                        )}
+                                                                        {topic.subtopics && topic.subtopics.length > 0 && (
+                                                                            <Badge variant="secondary" className="text-[10px] py-0 px-1.5 h-4 gap-1">
+                                                                                <Layers className="h-2.5 w-2.5" />
+                                                                                {topic.subtopics.length} subtema(s)
+                                                                            </Badge>
+                                                                        )}
+                                                                    </div>
+                                                                    {topic.description && (
+                                                                        <p className="text-xs text-muted-foreground line-clamp-1 mt-1">
+                                                                            {topic.description}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })
+                                                )}
+                                            </div>
 
-                                        <div className="space-y-1.5">
-                                            <Label htmlFor="unit_title">Unidad / Módulo</Label>
-                                            <Input
-                                                id="unit_title"
-                                                value={addTopicForm.data.unit_title}
-                                                onChange={(e) => addTopicForm.setData('unit_title', e.target.value)}
-                                                placeholder="Ej: Unidad 1: Fundamentos"
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <Label htmlFor="topic_desc">Descripción u Objetivos</Label>
-                                            <Input
-                                                id="topic_desc"
-                                                value={addTopicForm.data.description}
-                                                onChange={(e) => addTopicForm.setData('description', e.target.value)}
-                                                placeholder="Breve detalle de lo que aprenderán"
-                                            />
-                                        </div>
-
-                                        <div className="flex justify-end gap-2 pt-2">
-                                            <Button type="button" variant="outline" onClick={() => setOpenAddTopicDialog(false)}>
-                                                Cancelar
-                                            </Button>
-                                            <Button type="submit" disabled={addTopicForm.processing}>
-                                                Guardar en Pensum
-                                            </Button>
-                                        </div>
-                                    </form>
-                                </DialogContent>
-                            </Dialog>
+                                            {/* Footer Summary & Actions */}
+                                            <div className="flex items-center justify-between border-t pt-3">
+                                                <span className="text-xs text-muted-foreground">
+                                                    <strong className="text-foreground">{selectedBulkTopicIds.length}</strong> de{' '}
+                                                    {availableGlobalTopics.length} tema(s) seleccionado(s)
+                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => setOpenBulkImportDialog(false)}
+                                                    >
+                                                        Cancelar
+                                                    </Button>
+                                                    <Button
+                                                        type="submit"
+                                                        size="sm"
+                                                        disabled={selectedBulkTopicIds.length === 0 || isBulkImporting}
+                                                    >
+                                                        {isBulkImporting ? 'Importando...' : `Importar ${selectedBulkTopicIds.length} Seleccionado(s)`}
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    </DialogContent>
+                                </Dialog>
+                            </div>
                         </div>
 
                         {course.course_topics.length === 0 ? (
                             <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">
                                 <BookOpen className="mx-auto h-8 w-8 text-muted-foreground/50 mb-2" />
                                 <p>No hay temas agregados al pensum todavía.</p>
-                                <Button size="sm" variant="outline" className="mt-4" onClick={() => setOpenAddTopicDialog(true)}>
-                                    Agregar Primer Tema
-                                </Button>
+                                <div className="flex items-center justify-center gap-2 mt-4">
+                                    {availableGlobalTopics.length > 0 && (
+                                        <Button
+                                            size="sm"
+                                            className="gap-2"
+                                            onClick={() => {
+                                                setSelectedBulkTopicIds(availableGlobalTopics.map((t) => t.id));
+                                                setOpenBulkImportDialog(true);
+                                            }}
+                                        >
+                                            <Download className="h-4 w-4" /> Importar Todos del Banco ({availableGlobalTopics.length})
+                                        </Button>
+                                    )}
+                                    <Button size="sm" variant="outline" onClick={() => setOpenAddTopicDialog(true)}>
+                                        Agregar Tema Manual
+                                    </Button>
+                                </div>
                             </div>
                         ) : (
                             <div className="divide-y rounded-xl border bg-card">

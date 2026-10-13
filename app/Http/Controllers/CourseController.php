@@ -13,6 +13,7 @@ use App\Models\Topic;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use App\Services\InstitutionContext;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -233,6 +234,78 @@ class CourseController extends Controller
         }
 
         return back()->with('success', $parentId ? 'Subtema agregado al pensum.' : 'Tema agregado al pensum.');
+    }
+
+    /**
+     * Bulk import multiple topics from the global/institutional bank into the course pensum.
+     */
+    public function bulkAddTopics(Request $request, Course $course): RedirectResponse
+    {
+        $validated = $request->validate([
+            'topic_ids' => ['required', 'array', 'min:1'],
+            'topic_ids.*' => ['integer', 'exists:topics,id'],
+        ]);
+
+        $topicsToImport = Topic::whereIn('id', $validated['topic_ids'])
+            ->where('is_active', true)
+            ->whereNull('parent_id')
+            ->where(function ($q) use ($course) {
+                $q->where('is_global', true)
+                  ->orWhere('institution_id', $course->institution_id);
+            })
+            ->with(['subtopics' => fn($q) => $q->orderBy('sort_order')->orderBy('id')])
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        if ($topicsToImport->isEmpty()) {
+            return back()->withErrors(['topic_ids' => 'Ninguno de los temas seleccionados está disponible para importar en este curso.']);
+        }
+
+        $existingTopicIds = $course->courseTopics()
+            ->whereNotNull('topic_id')
+            ->pluck('topic_id')
+            ->toArray();
+
+        $importedCount = 0;
+        $currentSortOrder = $course->courseTopics()->whereNull('parent_id')->max('sort_order') ?? 0;
+
+        DB::transaction(function () use ($course, $topicsToImport, $existingTopicIds, &$importedCount, &$currentSortOrder) {
+            foreach ($topicsToImport as $topic) {
+                if (in_array($topic->id, $existingTopicIds)) {
+                    continue;
+                }
+
+                $currentSortOrder++;
+                $newCourseTopic = $course->courseTopics()->create([
+                    'topic_id' => $topic->id,
+                    'parent_id' => null,
+                    'title' => $topic->title,
+                    'unit_title' => $topic->unit_title,
+                    'description' => $topic->description,
+                    'sort_order' => $currentSortOrder,
+                    'is_required' => true,
+                ]);
+                $importedCount++;
+
+                // If the topic has child subtopics, import them as well
+                if ($topic->subtopics->isNotEmpty()) {
+                    foreach ($topic->subtopics as $subIndex => $sub) {
+                        $course->courseTopics()->create([
+                            'topic_id' => $sub->id,
+                            'parent_id' => $newCourseTopic->id,
+                            'title' => $sub->title,
+                            'unit_title' => $sub->unit_title ?? $newCourseTopic->unit_title,
+                            'description' => $sub->description,
+                            'sort_order' => $sub->sort_order ?: ($subIndex + 1),
+                            'is_required' => true,
+                        ]);
+                    }
+                }
+            }
+        });
+
+        return back()->with('success', "Se importaron {$importedCount} temas al pensum del curso exitosamente.");
     }
 
     /**

@@ -170,3 +170,101 @@ test('user can complete a class session and accredit topics', function () {
     expect($progress)->not->toBeNull()
         ->and($progress->coverage_status)->toBe('explained');
 });
+
+test('user can bulk import topics into course pensum including subtopics', function () {
+    $course = Course::create([
+        'institution_id' => $this->institution->id,
+        'academic_period_id' => $this->period->id,
+        'name' => 'Ofimática Avanzada',
+    ]);
+
+    $parentBankTopic = Topic::create([
+        'institution_id' => $this->institution->id,
+        'title' => 'Procesamiento de Texto',
+        'area' => 'Ofimática',
+        'unit_title' => 'Módulo 1',
+        'is_global' => false,
+        'is_active' => true,
+    ]);
+
+    $childBankTopic = Topic::create([
+        'institution_id' => $this->institution->id,
+        'parent_id' => $parentBankTopic->id,
+        'title' => 'Formatos y Tablas',
+        'area' => 'Ofimática',
+        'unit_title' => 'Módulo 1',
+        'is_global' => false,
+        'is_active' => true,
+    ]);
+
+    $bankTopic2 = Topic::create([
+        'institution_id' => $this->institution->id,
+        'title' => 'Hojas de Cálculo',
+        'area' => 'Ofimática',
+        'unit_title' => 'Módulo 2',
+        'is_global' => false,
+        'is_active' => true,
+    ]);
+
+    $response = $this->actingAs($this->user)->post("/courses/{$course->id}/topics/bulk-import", [
+        'topic_ids' => [$parentBankTopic->id, $bankTopic2->id],
+    ]);
+
+    $response->assertRedirect();
+    $response->assertSessionHas('success');
+
+    // 2 root topics + 1 child subtopic imported
+    expect($course->courseTopics()->count())->toBe(3);
+
+    $rootTopics = $course->courseTopics()->whereNull('parent_id')->get();
+    expect($rootTopics->count())->toBe(2);
+
+    $wordTopic = $rootTopics->firstWhere('title', 'Procesamiento de Texto');
+    expect($wordTopic)->not->toBeNull();
+    expect($wordTopic->subtopics()->count())->toBe(1);
+    expect($wordTopic->subtopics()->first()->title)->toBe('Formatos y Tablas');
+});
+
+test('bulk import ignores topics that are already present in the pensum', function () {
+    $course = Course::create([
+        'institution_id' => $this->institution->id,
+        'academic_period_id' => $this->period->id,
+        'name' => 'Diseño Gráfico',
+    ]);
+
+    $bankTopic1 = Topic::create([
+        'institution_id' => $this->institution->id,
+        'title' => 'Teoría del Color',
+        'area' => 'Diseño',
+        'is_global' => false,
+        'is_active' => true,
+    ]);
+
+    $bankTopic2 = Topic::create([
+        'institution_id' => $this->institution->id,
+        'title' => 'Tipografía',
+        'area' => 'Diseño',
+        'is_global' => false,
+        'is_active' => true,
+    ]);
+
+    // Pre-add bankTopic1
+    $course->courseTopics()->create([
+        'topic_id' => $bankTopic1->id,
+        'title' => $bankTopic1->title,
+        'sort_order' => 1,
+        'is_required' => true,
+    ]);
+
+    expect($course->courseTopics()->count())->toBe(1);
+
+    // Bulk import both topics; bankTopic1 should not be duplicated
+    $response = $this->actingAs($this->user)->post("/courses/{$course->id}/topics/bulk-import", [
+        'topic_ids' => [$bankTopic1->id, $bankTopic2->id],
+    ]);
+
+    $response->assertRedirect();
+    expect($course->courseTopics()->count())->toBe(2);
+    expect($course->courseTopics()->where('topic_id', $bankTopic1->id)->count())->toBe(1);
+    expect($course->courseTopics()->where('topic_id', $bankTopic2->id)->count())->toBe(1);
+});
