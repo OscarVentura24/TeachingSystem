@@ -309,6 +309,168 @@ class CourseController extends Controller
     }
 
     /**
+     * Synchronize all linked topics in the course pensum with the topics bank.
+     * Preserves sort_order and existing positions in the syllabus.
+     */
+    public function syncTopics(Request $request, Course $course): RedirectResponse
+    {
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para modificar el pensum de este curso.');
+        }
+
+        $courseTopics = $course->courseTopics()
+            ->whereNull('parent_id')
+            ->whereNotNull('topic_id')
+            ->with('subtopics')
+            ->get();
+
+        if ($courseTopics->isEmpty()) {
+            return back()->with('info', 'No hay temas vinculados al banco global para actualizar.');
+        }
+
+        $bankTopicIds = $courseTopics->pluck('topic_id')->filter()->unique();
+        $bankTopics = Topic::whereIn('id', $bankTopicIds)
+            ->with(['subtopics' => fn($q) => $q->orderBy('sort_order')->orderBy('id')])
+            ->get()
+            ->keyBy('id');
+
+        $updatedCount = 0;
+
+        DB::transaction(function () use ($courseTopics, $bankTopics, &$updatedCount) {
+            foreach ($courseTopics as $ct) {
+                $bankTopic = $bankTopics->get($ct->topic_id);
+                if ($bankTopic) {
+                    if ($this->syncCourseTopicRecord($ct, $bankTopic)) {
+                        $updatedCount++;
+                    }
+                }
+            }
+        });
+
+        return back()->with('success', $updatedCount > 0
+            ? "Se actualizaron {$updatedCount} tema(s) desde el banco global sin alterar el orden del pensum."
+            : 'Todos los temas vinculados ya están actualizados con el banco global.');
+    }
+
+    /**
+     * Synchronize a single course topic (and its subtopics) with the topics bank.
+     */
+    public function syncSingleTopic(Request $request, Course $course, CourseTopic $courseTopic): RedirectResponse
+    {
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para modificar el pensum de este curso.');
+        }
+
+        if ($courseTopic->course_id !== $course->id) {
+            abort(404);
+        }
+
+        if (!$courseTopic->topic_id) {
+            return back()->withErrors(['topic' => 'Este tema fue creado manualmente y no está vinculado al banco de temas.']);
+        }
+
+        $bankTopic = Topic::with(['subtopics' => fn($q) => $q->orderBy('sort_order')->orderBy('id')])
+            ->find($courseTopic->topic_id);
+
+        if (!$bankTopic) {
+            return back()->withErrors(['topic' => 'El tema de origen ya no existe en el banco de temas.']);
+        }
+
+        DB::transaction(function () use ($courseTopic, $bankTopic) {
+            if ($courseTopic->parent_id !== null) {
+                $courseTopic->update([
+                    'title' => $bankTopic->title,
+                    'unit_title' => $bankTopic->unit_title ?? $courseTopic->unit_title,
+                    'description' => $bankTopic->description,
+                ]);
+            } else {
+                $this->syncCourseTopicRecord($courseTopic, $bankTopic);
+            }
+        });
+
+        return back()->with('success', "Tema \"{$courseTopic->title}\" actualizado desde el banco global.");
+    }
+
+    /**
+     * Helper to synchronize a CourseTopic and its subtopics from a bank Topic.
+     * Preserves sort_order and existing sequence.
+     */
+    protected function syncCourseTopicRecord(CourseTopic $courseTopic, ?Topic $bankTopic = null): bool
+    {
+        if (!$courseTopic->topic_id) {
+            return false;
+        }
+
+        $bankTopic = $bankTopic ?: Topic::with(['subtopics' => fn($q) => $q->orderBy('sort_order')->orderBy('id')])
+            ->find($courseTopic->topic_id);
+
+        if (!$bankTopic) {
+            return false;
+        }
+
+        $updated = false;
+
+        $changes = [];
+        if ($courseTopic->title !== $bankTopic->title) {
+            $changes['title'] = $bankTopic->title;
+        }
+        if ($courseTopic->unit_title !== $bankTopic->unit_title) {
+            $changes['unit_title'] = $bankTopic->unit_title;
+        }
+        if ($courseTopic->description !== $bankTopic->description) {
+            $changes['description'] = $bankTopic->description;
+        }
+
+        if (!empty($changes)) {
+            $courseTopic->update($changes);
+            $updated = true;
+        }
+
+        // Subtopics sync
+        if ($bankTopic->subtopics && $bankTopic->subtopics->isNotEmpty()) {
+            $existingCourseSubtopics = $courseTopic->subtopics()->get();
+            $existingSubtopicsByTopicId = $existingCourseSubtopics->whereNotNull('topic_id')->keyBy('topic_id');
+            $maxSortOrder = $existingCourseSubtopics->max('sort_order') ?? 0;
+
+            foreach ($bankTopic->subtopics as $bankSubtopic) {
+                if ($existingSubtopicsByTopicId->has($bankSubtopic->id)) {
+                    $existingSub = $existingSubtopicsByTopicId->get($bankSubtopic->id);
+                    $subChanges = [];
+                    if ($existingSub->title !== $bankSubtopic->title) {
+                        $subChanges['title'] = $bankSubtopic->title;
+                    }
+                    $targetUnit = $bankSubtopic->unit_title ?? $bankTopic->unit_title;
+                    if ($existingSub->unit_title !== $targetUnit) {
+                        $subChanges['unit_title'] = $targetUnit;
+                    }
+                    if ($existingSub->description !== $bankSubtopic->description) {
+                        $subChanges['description'] = $bankSubtopic->description;
+                    }
+                    if (!empty($subChanges)) {
+                        $existingSub->update($subChanges);
+                        $updated = true;
+                    }
+                } else {
+                    $maxSortOrder++;
+                    $courseTopic->course->courseTopics()->create([
+                        'course_id' => $courseTopic->course_id,
+                        'topic_id' => $bankSubtopic->id,
+                        'parent_id' => $courseTopic->id,
+                        'title' => $bankSubtopic->title,
+                        'unit_title' => $bankSubtopic->unit_title ?? $bankTopic->unit_title,
+                        'description' => $bankSubtopic->description,
+                        'sort_order' => $bankSubtopic->sort_order ?: $maxSortOrder,
+                        'is_required' => true,
+                    ]);
+                    $updated = true;
+                }
+            }
+        }
+
+        return $updated;
+    }
+
+    /**
      * Reorder topics in the course pensum.
      */
     public function reorderTopics(Request $request, Course $course): RedirectResponse

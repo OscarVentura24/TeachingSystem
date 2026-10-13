@@ -23,6 +23,7 @@ import {
     Download,
     Search,
     AlertCircle,
+    RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -236,6 +237,43 @@ export default function CourseShow({
                 onFinish: () => {
                     setIsBulkImporting(false);
                 },
+            }
+        );
+    };
+
+    const hasLinkedTopics = useMemo(() => {
+        return course.course_topics.some((ct) => ct.topic_id !== null && ct.topic_id !== undefined);
+    }, [course.course_topics]);
+
+    const [isSyncingTopics, setIsSyncingTopics] = useState(false);
+    const [syncingTopicId, setSyncingTopicId] = useState<number | null>(null);
+
+    const handleSyncAllTopics = () => {
+        if (!confirm('¿Deseas actualizar todos los temas vinculados con el Banco Global?\n\nSe actualizarán sus títulos, descripciones y nuevos subtemas, manteniendo intacto el orden actual del pensum.')) {
+            return;
+        }
+        setIsSyncingTopics(true);
+        router.post(
+            `/courses/${course.id}/topics/sync`,
+            {},
+            {
+                preserveScroll: true,
+                onFinish: () => setIsSyncingTopics(false),
+            }
+        );
+    };
+
+    const handleSyncSingleTopic = (topicId: number, title: string) => {
+        if (!confirm(`¿Actualizar el tema "${title}" y sus subtemas con la información más reciente del Banco Global?\n\nEl orden en el pensum se mantendrá intacto.`)) {
+            return;
+        }
+        setSyncingTopicId(topicId);
+        router.post(
+            `/courses/${course.id}/topics/${topicId}/sync`,
+            {},
+            {
+                preserveScroll: true,
+                onFinish: () => setSyncingTopicId(null),
             }
         );
     };
@@ -564,6 +602,20 @@ export default function CourseShow({
                             </div>
 
                             <div className="flex items-center gap-2">
+                                {hasLinkedTopics && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-2"
+                                        disabled={isSyncingTopics}
+                                        onClick={handleSyncAllTopics}
+                                        title="Actualizar temas y subtemas vinculados desde el Banco Global manteniendo intacto el orden del pensum"
+                                    >
+                                        <RefreshCw className={`h-4 w-4 ${isSyncingTopics ? 'animate-spin' : ''}`} />
+                                        {isSyncingTopics ? 'Actualizando...' : 'Actualizar del Banco'}
+                                    </Button>
+                                )}
+
                                 {availableGlobalTopics.length > 0 && (
                                     <Button
                                         variant="outline"
@@ -947,6 +999,20 @@ export default function CourseShow({
                                                     <Plus className="h-3.5 w-3.5" /> Subtema
                                                 </Button>
 
+                                                {topic.topic_id && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-8 w-8 p-0 text-muted-foreground hover:text-primary"
+                                                        disabled={syncingTopicId === topic.id}
+                                                        onClick={() => handleSyncSingleTopic(topic.id, topic.title)}
+                                                        title="Actualizar este tema y sus subtemas desde el Banco Global"
+                                                    >
+                                                        <RefreshCw className={`h-3.5 w-3.5 ${syncingTopicId === topic.id ? 'animate-spin' : ''}`} />
+                                                    </Button>
+                                                )}
+
                                                 <Button
                                                     type="button"
                                                     variant="ghost"
@@ -1004,6 +1070,19 @@ export default function CourseShow({
                                                             >
                                                                 <ChevronDown className="h-3 w-3" />
                                                             </Button>
+                                                            {sub.topic_id && (
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="h-6 w-6 p-0 text-muted-foreground hover:text-primary shrink-0"
+                                                                    disabled={syncingTopicId === sub.id}
+                                                                    onClick={() => handleSyncSingleTopic(sub.id, sub.title)}
+                                                                    title="Actualizar subtema desde el Banco Global"
+                                                                >
+                                                                    <RefreshCw className={`h-3 w-3 ${syncingTopicId === sub.id ? 'animate-spin' : ''}`} />
+                                                                </Button>
+                                                            )}
                                                             <Button
                                                                 type="button"
                                                                 variant="ghost"

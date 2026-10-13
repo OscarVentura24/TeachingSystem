@@ -268,3 +268,131 @@ test('bulk import ignores topics that are already present in the pensum', functi
     expect($course->courseTopics()->where('topic_id', $bankTopic1->id)->count())->toBe(1);
     expect($course->courseTopics()->where('topic_id', $bankTopic2->id)->count())->toBe(1);
 });
+
+test('user can sync all course topics from the bank while preserving sort order and importing new subtopics', function () {
+    $course = Course::create([
+        'institution_id' => $this->institution->id,
+        'academic_period_id' => $this->period->id,
+        'name' => 'Programación Web',
+    ]);
+
+    // Create bank topic with 1 subtopic
+    $bankTopic = Topic::create([
+        'institution_id' => $this->institution->id,
+        'title' => 'HTML Básico Antiguo',
+        'area' => 'Frontend',
+        'unit_title' => 'Unidad 1',
+        'description' => 'Descripción vieja',
+        'is_global' => false,
+        'is_active' => true,
+    ]);
+
+    $bankSubtopic1 = Topic::create([
+        'institution_id' => $this->institution->id,
+        'parent_id' => $bankTopic->id,
+        'title' => 'Etiquetas Básicas Viejas',
+        'area' => 'Frontend',
+        'unit_title' => 'Unidad 1',
+        'is_global' => false,
+        'is_active' => true,
+    ]);
+
+    // Course topic in pensum at sort_order 3 (deliberately non-1 to check order preservation)
+    $courseTopic = $course->courseTopics()->create([
+        'topic_id' => $bankTopic->id,
+        'title' => 'HTML Básico Antiguo',
+        'unit_title' => 'Unidad 1',
+        'description' => 'Descripción vieja',
+        'sort_order' => 3,
+        'is_required' => true,
+    ]);
+
+    $courseSubtopic = $course->courseTopics()->create([
+        'topic_id' => $bankSubtopic1->id,
+        'parent_id' => $courseTopic->id,
+        'title' => 'Etiquetas Básicas Viejas',
+        'unit_title' => 'Unidad 1',
+        'sort_order' => 1,
+        'is_required' => true,
+    ]);
+
+    // Now update bank topic in the global bank AND add a new subtopic in the bank
+    $bankTopic->update([
+        'title' => 'HTML5 Moderno y Semántica',
+        'description' => 'Nueva descripción actualizada',
+    ]);
+    $bankSubtopic1->update([
+        'title' => 'Estructura Semántica de HTML5',
+    ]);
+    $newBankSubtopic = Topic::create([
+        'institution_id' => $this->institution->id,
+        'parent_id' => $bankTopic->id,
+        'title' => 'Formularios y Validaciones Nativas',
+        'area' => 'Frontend',
+        'unit_title' => 'Unidad 1',
+        'sort_order' => 2,
+        'is_global' => false,
+        'is_active' => true,
+    ]);
+
+    // Send sync request
+    $response = $this->actingAs($this->user)->post("/courses/{$course->id}/topics/sync");
+
+    $response->assertRedirect();
+    $response->assertSessionHas('success');
+
+    // Fresh query
+    $courseTopic->refresh();
+    expect($courseTopic->title)->toBe('HTML5 Moderno y Semántica');
+    expect($courseTopic->description)->toBe('Nueva descripción actualizada');
+    // Ensure sort_order was strictly preserved!
+    expect($courseTopic->sort_order)->toBe(3);
+
+    // Existing subtopic was updated
+    $courseSubtopic->refresh();
+    expect($courseSubtopic->title)->toBe('Estructura Semántica de HTML5');
+
+    // New subtopic was imported automatically into this course topic
+    $subtopics = $courseTopic->subtopics()->get();
+    expect($subtopics->count())->toBe(2);
+    expect($subtopics->pluck('title')->all())->toContain('Formularios y Validaciones Nativas');
+});
+
+test('user can sync a single course topic from the bank', function () {
+    $course = Course::create([
+        'institution_id' => $this->institution->id,
+        'academic_period_id' => $this->period->id,
+        'name' => 'Ciencias de la Computación',
+    ]);
+
+    $bankTopic = Topic::create([
+        'institution_id' => $this->institution->id,
+        'title' => 'Algoritmos de Ordenamiento V1',
+        'area' => 'Algoritmos',
+        'is_global' => false,
+        'is_active' => true,
+    ]);
+
+    $courseTopic = $course->courseTopics()->create([
+        'topic_id' => $bankTopic->id,
+        'title' => 'Algoritmos de Ordenamiento V1',
+        'sort_order' => 2,
+        'is_required' => true,
+    ]);
+
+    // Bank topic gets edited
+    $bankTopic->update([
+        'title' => 'Algoritmos de Ordenamiento y Búsqueda',
+        'description' => 'Quicksort, Mergesort y Búsqueda Binaria',
+    ]);
+
+    $response = $this->actingAs($this->user)->post("/courses/{$course->id}/topics/{$courseTopic->id}/sync");
+
+    $response->assertRedirect();
+    $response->assertSessionHas('success');
+
+    $courseTopic->refresh();
+    expect($courseTopic->title)->toBe('Algoritmos de Ordenamiento y Búsqueda');
+    expect($courseTopic->description)->toBe('Quicksort, Mergesort y Búsqueda Binaria');
+    expect($courseTopic->sort_order)->toBe(2);
+});
