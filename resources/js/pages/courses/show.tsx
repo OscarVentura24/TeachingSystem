@@ -24,6 +24,7 @@ import {
     Search,
     AlertCircle,
     RefreshCw,
+    CalendarDays,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,6 +41,7 @@ import {
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { formatNaturalDateWithDay } from '@/lib/formatters';
 
 interface CourseTopic {
     id: number;
@@ -65,9 +67,22 @@ interface SessionItem {
     id: number;
     session_date: string;
     title?: string;
+    notes?: string;
     status: 'draft' | 'completed' | 'cancelled';
-    attendances: Array<{ id: number; student_id: number; workstation?: string }>;
-    topics: Array<{ id: number; title: string }>;
+    created_by?: { id: number; name: string };
+    attendances: Array<{
+        id: number;
+        student_id: number;
+        workstation?: string;
+        notes?: string;
+        student?: {
+            id: number;
+            first_name: string;
+            last_name: string;
+            student_id_number?: string;
+        };
+    }>;
+    topics: Array<{ id: number; title: string; unit_title?: string }>;
 }
 
 interface GlobalTopic {
@@ -410,6 +425,23 @@ export default function CourseShow({
     const handleRemoveStudent = (studentId: number, name: string) => {
         if (confirm(`¿Desmatricular a "${name}" de este curso?\n\nSus registros históricos en sesiones previas se conservarán.`)) {
             router.delete(`/courses/${course.id}/students/${studentId}`);
+        }
+    };
+
+    const handleUpdateSessionStatus = (sessionId: number, newStatus: string) => {
+        router.patch(`/courses/${course.id}/sessions/${sessionId}/status`, {
+            status: newStatus,
+        }, {
+            preserveScroll: true,
+        });
+    };
+
+    const handleDeleteSession = (sessionId: number, title?: string) => {
+        const displayTitle = title ? `"${title}"` : `la sesión #${sessionId}`;
+        if (confirm(`¿Estás seguro de eliminar ${displayTitle}?\n\nEsta acción eliminará el registro de asistencia y la acreditación de esta fecha.`)) {
+            router.delete(`/courses/${course.id}/sessions/${sessionId}`, {
+                preserveScroll: true,
+            });
         }
     };
 
@@ -1306,33 +1338,135 @@ export default function CourseShow({
                         ) : (
                             <div className="divide-y rounded-xl border bg-card">
                                 {course.sessions.map((session) => (
-                                    <div key={session.id} className="p-4 hover:bg-muted/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-semibold text-sm text-foreground">
-                                                    {session.title || 'Sesión de Clase'}
-                                                </span>
-                                                <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${
-                                                    session.status === 'completed'
-                                                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                                                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                                                }`}>
-                                                    {session.status === 'completed' ? 'Cerrada' : 'Borrador'}
-                                                </span>
-                                            </div>
-                                            <div className="text-xs text-muted-foreground mt-1 flex items-center gap-4">
-                                                <span>Fecha: {session.session_date}</span>
-                                                <span>Asistencia: {session.attendances?.length || 0} alumnos</span>
+                                    <div key={session.id} className="p-4 hover:bg-muted/10 transition-colors space-y-3">
+                                        {/* Header of session card */}
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                            <div>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="font-semibold text-sm text-foreground">
+                                                        {session.title || 'Sesión de Clase'}
+                                                    </span>
+                                                    <span className="text-xs text-muted-foreground">•</span>
+                                                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground">
+                                                        <CalendarDays className="h-3.5 w-3.5 text-primary" />
+                                                        {formatNaturalDateWithDay(session.session_date)}
+                                                    </span>
+                                                    {session.created_by && (
+                                                        <>
+                                                            <span className="text-xs text-muted-foreground">•</span>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                Docente: {session.created_by.name}
+                                                            </span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                                {session.notes && (
+                                                    <p className="text-xs text-muted-foreground/90 italic mt-0.5">
+                                                        "{session.notes}"
+                                                    </p>
+                                                )}
                                             </div>
 
-                                            {session.topics && session.topics.length > 0 && (
-                                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                            {/* Status Selector & Actions */}
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                <select
+                                                    value={session.status}
+                                                    onChange={(e) => handleUpdateSessionStatus(session.id, e.target.value)}
+                                                    className={`h-7 rounded-md text-[11px] font-semibold px-2 py-0 cursor-pointer border focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+                                                        session.status === 'completed'
+                                                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
+                                                            : session.status === 'draft'
+                                                            ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
+                                                            : 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800'
+                                                    }`}
+                                                >
+                                                    <option value="completed">Completada</option>
+                                                    <option value="draft">Borrador</option>
+                                                    <option value="cancelled">Cancelada</option>
+                                                </select>
+
+                                                <Link href={`/courses/${course.id}/sessions/${session.id}/edit`}>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
+                                                        title="Editar sesión y asistencia"
+                                                    >
+                                                        <Pencil className="h-3.5 w-3.5" /> Editar
+                                                    </Button>
+                                                </Link>
+
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                                    onClick={() => handleDeleteSession(session.id, session.title)}
+                                                    title="Eliminar sesión de clase"
+                                                >
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        {/* Covered topics */}
+                                        {session.topics && session.topics.length > 0 && (
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                                                    <BookOpen className="h-3.5 w-3.5 text-primary" />
+                                                    <span>Temas Impartidos ({session.topics.length}):</span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1.5">
                                                     {session.topics.map((t) => (
-                                                        <span key={t.id} className="text-[11px] px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                                                        <span
+                                                            key={t.id}
+                                                            className="text-[11px] px-2 py-0.5 rounded bg-muted text-muted-foreground border"
+                                                        >
                                                             {t.title}
+                                                            {t.unit_title && (
+                                                                <span className="text-[10px] text-muted-foreground/70 ml-1 font-mono">
+                                                                    [{t.unit_title}]
+                                                                </span>
+                                                            )}
                                                         </span>
                                                     ))}
                                                 </div>
+                                            </div>
+                                        )}
+
+                                        {/* Attending students list */}
+                                        <div className="space-y-1 pt-1">
+                                            <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                                                <Users className="h-3.5 w-3.5 text-primary" />
+                                                <span>Estudiantes Asistentes ({session.attendances?.length || 0}):</span>
+                                            </div>
+
+                                            {session.attendances && session.attendances.length > 0 ? (
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {session.attendances.map((att) => {
+                                                        const studentName = att.student
+                                                            ? `${att.student.first_name} ${att.student.last_name}`
+                                                            : `Estudiante #${att.student_id}`;
+
+                                                        return (
+                                                            <span
+                                                                key={att.id}
+                                                                className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-secondary/80 text-secondary-foreground border"
+                                                            >
+                                                                <span>{studentName}</span>
+                                                                {att.workstation && (
+                                                                    <span className="inline-flex items-center gap-0.5 font-mono text-[10px] text-muted-foreground bg-background px-1 rounded border ml-0.5">
+                                                                        <Computer className="h-2.5 w-2.5" />
+                                                                        {att.workstation}
+                                                                    </span>
+                                                                )}
+                                                            </span>
+                                                        );
+                                                    })}
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-muted-foreground italic">
+                                                    No se registraron alumnos asistentes en esta sesión.
+                                                </p>
                                             )}
                                         </div>
                                     </div>

@@ -58,9 +58,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/students/{student}', [\App\Http\Controllers\StudentController::class, 'destroy'])->name('students.destroy');
 
     // Dynamic Class Sessions & Topic Suggestion
+    Route::get('/sessions', [ClassSessionController::class, 'index'])->name('sessions.index');
+    Route::patch('/sessions/{session}/status', [ClassSessionController::class, 'updateStatusDirect'])->name('sessions.update-status');
+    Route::delete('/sessions/{session}', [ClassSessionController::class, 'destroyDirect'])->name('sessions.destroy');
     Route::get('/courses/{course}/sessions/create', [ClassSessionController::class, 'create'])->name('courses.sessions.create');
     Route::post('/courses/{course}/sessions/suggest', [ClassSessionController::class, 'suggestTopic'])->name('courses.sessions.suggest');
     Route::post('/courses/{course}/sessions', [ClassSessionController::class, 'store'])->name('courses.sessions.store');
+    Route::get('/courses/{course}/sessions/{session}/edit', [ClassSessionController::class, 'edit'])->name('courses.sessions.edit');
+    Route::put('/courses/{course}/sessions/{session}', [ClassSessionController::class, 'update'])->name('courses.sessions.update');
+    Route::patch('/courses/{course}/sessions/{session}/status', [ClassSessionController::class, 'updateStatus'])->name('courses.sessions.update-status');
+    Route::delete('/courses/{course}/sessions/{session}', [ClassSessionController::class, 'destroy'])->name('courses.sessions.destroy');
 
     // Course Teachers Assignment
     Route::post('/courses/{course}/teachers', [CourseController::class, 'addTeacher'])->name('courses.teachers.add');

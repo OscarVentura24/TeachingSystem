@@ -11,6 +11,7 @@ import {
     Library,
     Users,
     UserCheck,
+    History,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
@@ -76,6 +77,11 @@ export function AppSidebar() {
                   icon: GraduationCap,
               },
               {
+                  title: 'Sesiones Globales',
+                  href: '/sessions',
+                  icon: History,
+              },
+              {
                   title: 'Docentes Globales',
                   href: '/teachers',
                   icon: Users,
@@ -106,6 +112,11 @@ export function AppSidebar() {
                   title: 'Cursos',
                   href: '/courses',
                   icon: GraduationCap,
+              },
+              {
+                  title: 'Sesiones',
+                  href: '/sessions',
+                  icon: History,
               },
               {
                   title: 'Docentes',

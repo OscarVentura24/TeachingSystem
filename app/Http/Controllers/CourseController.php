@@ -129,7 +129,11 @@ class CourseController extends Controller
                 $query->orderBy('last_name')->orderBy('first_name');
             },
             'sessions' => function ($query) {
-                $query->with(['topics', 'attendances'])->orderByDesc('session_date');
+                $query->with([
+                    'topics',
+                    'attendances.student',
+                    'createdBy:id,name',
+                ])->orderByDesc('session_date')->orderByDesc('id');
             },
         ]);
 
