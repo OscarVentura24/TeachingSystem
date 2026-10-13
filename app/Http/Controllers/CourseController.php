@@ -135,6 +135,13 @@ class CourseController extends Controller
                     'createdBy:id,name',
                 ])->orderByDesc('session_date')->orderByDesc('id');
             },
+            'assessments' => function ($query) {
+                $query->with([
+                    'topics:id,title,unit_title',
+                    'scores',
+                    'createdBy:id,name',
+                ])->orderBy('assessment_date')->orderBy('id');
+            },
         ]);
 
         // Load progress records for matrix (for all topics and subtopics in this course)

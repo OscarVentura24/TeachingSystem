@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 
+use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\ClassSessionController;
 use App\Http\Controllers\CourseController;
 use App\Http\Controllers\EnrollmentController;
@@ -26,6 +27,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/courses/{course}/topics/{courseTopic}', [CourseController::class, 'removeTopic'])->name('courses.topics.remove');
     Route::post('/courses/{course}/topics/reorder', [CourseController::class, 'reorderTopics'])->name('courses.topics.reorder');
     Route::post('/courses/{course}/progress', [CourseController::class, 'updateStudentProgress'])->name('courses.progress.update');
+    Route::post('/courses/{course}/assessments', [AssessmentController::class, 'store'])->name('courses.assessments.store');
+    Route::put('/courses/{course}/assessments/{assessment}', [AssessmentController::class, 'update'])->name('courses.assessments.update');
+    Route::delete('/courses/{course}/assessments/{assessment}', [AssessmentController::class, 'destroy'])->name('courses.assessments.destroy');
+    Route::post('/courses/{course}/assessments/{assessment}/scores', [AssessmentController::class, 'saveScores'])->name('courses.assessments.scores');
     Route::delete('/courses/{course}/students/{student}', [CourseController::class, 'removeStudent'])->name('courses.students.remove');
 
     // Enrollments

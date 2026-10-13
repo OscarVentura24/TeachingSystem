@@ -61,4 +61,9 @@ class Course extends Model
     {
         return $this->hasMany(ClassSession::class)->orderByDesc('session_date');
     }
+
+    public function assessments(): HasMany
+    {
+        return $this->hasMany(Assessment::class)->orderBy('assessment_date');
+    }
 }

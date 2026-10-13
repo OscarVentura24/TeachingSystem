@@ -25,11 +25,13 @@ import {
     AlertCircle,
     RefreshCw,
     CalendarDays,
+    Award,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CoverageMatrix } from '@/components/coverage-matrix';
+import { CourseAssessments } from '@/components/course-assessments';
 import {
     Dialog,
     DialogContent,
@@ -124,6 +126,7 @@ interface Props {
         students: Student[];
         sessions: SessionItem[];
         teachers: Teacher[];
+        assessments?: any[];
     };
     progressByStudent: Record<number, any[]>;
     globalTopics: GlobalTopic[];
@@ -140,7 +143,7 @@ export default function CourseShow({
     institutionStudents = [],
     canManageTeachers = false,
 }: Props) {
-    const [activeTab, setActiveTab] = useState<'matrix' | 'pensum' | 'students' | 'sessions' | 'teachers'>('matrix');
+    const [activeTab, setActiveTab] = useState<'matrix' | 'pensum' | 'students' | 'sessions' | 'teachers' | 'grades'>('matrix');
     const [openAddTopicDialog, setOpenAddTopicDialog] = useState(false);
     const [openBulkImportDialog, setOpenBulkImportDialog] = useState(false);
     const [selectedBulkTopicIds, setSelectedBulkTopicIds] = useState<number[]>([]);
@@ -603,6 +606,17 @@ export default function CourseShow({
                         }`}
                     >
                         <GraduationCap className="h-4 w-4" /> Docentes ({course.teachers?.length || 0})
+                    </button>
+
+                    <button
+                        onClick={() => setActiveTab('grades')}
+                        className={`pb-3 border-b-2 flex items-center gap-2 transition-colors ${
+                            activeTab === 'grades'
+                                ? 'border-primary text-primary font-semibold'
+                                : 'border-transparent text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        <Award className="h-4 w-4" /> Evaluaciones y Notas ({course.assessments?.length || 0})
                     </button>
                 </div>
 
@@ -1614,6 +1628,16 @@ export default function CourseShow({
                             </div>
                         )}
                     </div>
+                )}
+
+                {/* Tab 6: Assessments & Grades */}
+                {activeTab === 'grades' && (
+                    <CourseAssessments
+                        courseId={course.id}
+                        assessments={course.assessments || []}
+                        students={course.students || []}
+                        courseTopics={course.course_topics || []}
+                    />
                 )}
             </div>
         </>
