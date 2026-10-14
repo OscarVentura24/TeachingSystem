@@ -22,10 +22,12 @@ import {
     Sparkles,
     AlertCircle,
     Archive,
+    CalendarDays,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import {
     Dialog,
@@ -93,6 +95,9 @@ export default function CoursesIndex({
     const [openEditDialog, setOpenEditDialog] = useState(false);
     const [editingCourse, setEditingCourse] = useState<CourseItem | null>(null);
     const [openPeriodDialog, setOpenPeriodDialog] = useState(false);
+    const [openManagePeriodsDialog, setOpenManagePeriodsDialog] = useState(false);
+    const [openEditPeriodDialog, setOpenEditPeriodDialog] = useState(false);
+    const [editingPeriod, setEditingPeriod] = useState<AcademicPeriod | null>(null);
     const [openRolloverDialog, setOpenRolloverDialog] = useState(false);
     const { confirm, ConfirmDialogComponent } = useConfirmDialog();
 
@@ -166,6 +171,47 @@ export default function CoursesIndex({
         end_date: '',
         is_current: true,
     });
+
+    const editPeriodForm = useForm({
+        name: '',
+        start_date: '',
+        end_date: '',
+        is_current: false,
+    });
+
+    const handleStartEditPeriod = (period: AcademicPeriod) => {
+        setEditingPeriod(period);
+        editPeriodForm.setData({
+            name: period.name,
+            start_date: period.start_date || '',
+            end_date: period.end_date || '',
+            is_current: Boolean(period.is_current),
+        });
+        setOpenEditPeriodDialog(true);
+    };
+
+    const handleEditPeriodSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingPeriod) return;
+
+        editPeriodForm.put(`/academic-periods/${editingPeriod.id}`, {
+            onSuccess: () => {
+                setOpenEditPeriodDialog(false);
+                setEditingPeriod(null);
+                editPeriodForm.reset();
+            },
+        });
+    };
+
+    const handleDeletePeriod = (period: AcademicPeriod) => {
+        confirm({
+            title: `¿Eliminar el período "${period.name}"?`,
+            description: 'Se desvinculará este período de los cursos correspondientes. Esta acción no se puede deshacer.',
+            confirmText: 'Eliminar Período',
+            variant: 'destructive',
+            onConfirm: () => router.delete(`/academic-periods/${period.id}`),
+        });
+    };
 
     const handleCreateSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -326,6 +372,17 @@ export default function CoursesIndex({
                             </Button>
                         )}
 
+                        {/* Manage Academic Periods modal trigger */}
+                        {isInstitutionAdmin && (
+                            <Button
+                                variant="outline"
+                                className="gap-2"
+                                onClick={() => setOpenManagePeriodsDialog(true)}
+                            >
+                                <CalendarDays className="h-4 w-4" /> Gestionar Períodos
+                            </Button>
+                        )}
+
                         {/* Quick create academic period button */}
                         <Dialog open={openPeriodDialog} onOpenChange={setOpenPeriodDialog}>
                             <DialogTrigger asChild>
@@ -337,7 +394,7 @@ export default function CoursesIndex({
                                 <DialogHeader>
                                     <DialogTitle>Crear Período Académico</DialogTitle>
                                     <DialogDescription>
-                                        Define un nuevo ciclo o semestre (ej. 2026-II, Verano 2026).
+                                        Define un nuevo ciclo o año escolar (ej. 2026-2027, 2026-I, Verano 2026).
                                     </DialogDescription>
                                 </DialogHeader>
 
@@ -368,7 +425,7 @@ export default function CoursesIndex({
                                         <Input
                                             id="period_name"
                                             autoFocus
-                                            placeholder="Ej: 2026-II o Semestre 2026-B"
+                                            placeholder="Ej: 2026-2027 o Año Escolar 2026-2027"
                                             value={periodForm.data.name}
                                             onChange={(e) => periodForm.setData('name', e.target.value)}
                                             required
@@ -667,9 +724,19 @@ export default function CoursesIndex({
                             })}
                         </div>
 
-                        {/* Administrative close/reopen toggle for the actively selected period */}
+                        {/* Administrative actions for the actively selected period */}
                         {activeSelectedPeriod && isInstitutionAdmin && (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5">
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs"
+                                    onClick={() => handleStartEditPeriod(activeSelectedPeriod)}
+                                    title="Editar nombre, fechas o estado de este período"
+                                >
+                                    <Pencil className="h-3 w-3 mr-1" /> Editar
+                                </Button>
+
                                 {activeSelectedPeriod.is_closed ? (
                                     <Button
                                         size="sm"
@@ -677,7 +744,7 @@ export default function CoursesIndex({
                                         className="h-7 text-xs border-amber-500/30 hover:bg-amber-500/10 text-amber-800 dark:text-amber-300"
                                         onClick={() => handleReopenPeriod(activeSelectedPeriod)}
                                     >
-                                        <Unlock className="h-3 w-3 mr-1" /> Reabrir este Período
+                                        <Unlock className="h-3 w-3 mr-1" /> Reabrir
                                     </Button>
                                 ) : (
                                     <Button
@@ -686,9 +753,19 @@ export default function CoursesIndex({
                                         className="h-7 text-xs text-muted-foreground hover:text-foreground"
                                         onClick={() => handleClosePeriod(activeSelectedPeriod)}
                                     >
-                                        <Lock className="h-3 w-3 mr-1" /> Cerrar este Período
+                                        <Lock className="h-3 w-3 mr-1" /> Cerrar
                                     </Button>
                                 )}
+
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                    onClick={() => handleDeletePeriod(activeSelectedPeriod)}
+                                    title="Eliminar este período"
+                                >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
                             </div>
                         )}
                     </div>
@@ -878,6 +955,215 @@ export default function CoursesIndex({
                         ))}
                     </div>
                 )}
+
+                {/* Manage Academic Periods Dialog */}
+                <Dialog open={openManagePeriodsDialog} onOpenChange={setOpenManagePeriodsDialog}>
+                    <DialogContent className="sm:max-w-xl">
+                        <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2">
+                                <CalendarDays className="h-5 w-5 text-primary" />
+                                Períodos Académicos
+                            </DialogTitle>
+                            <DialogDescription>
+                                Consulta, edita o administra los períodos escolares y semestres de la institución.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-3 pt-2">
+                            {academicPeriods.length === 0 ? (
+                                <div className="text-center py-8 text-muted-foreground text-sm">
+                                    No hay períodos registrados. Crea uno con el botón "Nuevo Período".
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-border border rounded-lg overflow-hidden max-h-[380px] overflow-y-auto">
+                                    {academicPeriods.map((period) => (
+                                        <div
+                                            key={period.id}
+                                            className="p-3 flex items-center justify-between gap-3 hover:bg-muted/50 transition-colors"
+                                        >
+                                            <div className="space-y-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-semibold text-sm text-foreground truncate">
+                                                        {period.name}
+                                                    </span>
+                                                    {period.is_current && (
+                                                        <span className="inline-flex items-center text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-semibold px-2 py-0.5 rounded-full">
+                                                            Actual / Activo
+                                                        </span>
+                                                    )}
+                                                    {period.is_closed ? (
+                                                        <span className="inline-flex items-center text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-400 font-semibold px-2 py-0.5 rounded-full gap-1">
+                                                            <Lock className="h-2.5 w-2.5" /> Cerrado
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center text-[10px] bg-sky-500/15 text-sky-700 dark:text-sky-400 font-medium px-2 py-0.5 rounded-full">
+                                                            Abierto
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {period.start_date || period.end_date ? (
+                                                        <>
+                                                            {period.start_date ? new Date(period.start_date + 'T00:00:00').toLocaleDateString() : 'Sin inicio'}
+                                                            {' — '}
+                                                            {period.end_date ? new Date(period.end_date + 'T00:00:00').toLocaleDateString() : 'Sin fin'}
+                                                        </>
+                                                    ) : (
+                                                        'Fechas no definidas'
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="h-8 text-xs gap-1"
+                                                    onClick={() => {
+                                                        setOpenManagePeriodsDialog(false);
+                                                        handleStartEditPeriod(period);
+                                                    }}
+                                                >
+                                                    <Pencil className="h-3 w-3" /> Editar
+                                                </Button>
+
+                                                {period.is_closed ? (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        className="h-8 text-xs text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
+                                                        onClick={() => handleReopenPeriod(period)}
+                                                        title="Reabrir período"
+                                                    >
+                                                        <Unlock className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                ) : (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                                                        onClick={() => handleClosePeriod(period)}
+                                                        title="Cerrar período"
+                                                    >
+                                                        <Lock className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                )}
+
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                                    onClick={() => handleDeletePeriod(period)}
+                                                    title="Eliminar período"
+                                                >
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex justify-between items-center pt-3 border-t">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                    setOpenManagePeriodsDialog(false);
+                                    setOpenPeriodDialog(true);
+                                }}
+                                className="gap-1.5 text-xs"
+                            >
+                                <Plus className="h-3.5 w-3.5" /> Nuevo Período
+                            </Button>
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setOpenManagePeriodsDialog(false)}
+                            >
+                                Cerrar
+                            </Button>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Edit Academic Period Dialog */}
+                <Dialog open={openEditPeriodDialog} onOpenChange={setOpenEditPeriodDialog}>
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>Editar Período Académico</DialogTitle>
+                            <DialogDescription>
+                                Modifica el nombre, fechas y estado del ciclo escolar.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <form onSubmit={handleEditPeriodSubmit} className="space-y-4 pt-2">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="edit_period_name">Nombre del Período *</Label>
+                                <Input
+                                    id="edit_period_name"
+                                    autoFocus
+                                    placeholder="Ej: 2026-2027 o 2026-I"
+                                    value={editPeriodForm.data.name}
+                                    onChange={(e) => editPeriodForm.setData('name', e.target.value)}
+                                    required
+                                />
+                                {editPeriodForm.errors.name && (
+                                    <p className="text-xs text-destructive">{editPeriodForm.errors.name}</p>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="edit_period_start_date">Fecha Inicio</Label>
+                                    <Input
+                                        id="edit_period_start_date"
+                                        type="date"
+                                        value={editPeriodForm.data.start_date}
+                                        onChange={(e) => editPeriodForm.setData('start_date', e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="edit_period_end_date">Fecha Fin</Label>
+                                    <Input
+                                        id="edit_period_end_date"
+                                        type="date"
+                                        value={editPeriodForm.data.end_date}
+                                        onChange={(e) => editPeriodForm.setData('end_date', e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex items-center space-x-2 pt-1">
+                                <Checkbox
+                                    id="edit_period_is_current"
+                                    checked={editPeriodForm.data.is_current}
+                                    onCheckedChange={(checked) => editPeriodForm.setData('is_current', Boolean(checked))}
+                                />
+                                <Label
+                                    htmlFor="edit_period_is_current"
+                                    className="text-xs font-normal cursor-pointer leading-tight"
+                                >
+                                    Establecer como <span className="font-semibold text-primary">Período Actual Activo</span> de la institución
+                                </Label>
+                            </div>
+
+                            <div className="flex justify-end gap-2 pt-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setOpenEditPeriodDialog(false)}
+                                >
+                                    Cancelar
+                                </Button>
+                                <Button type="submit" disabled={editPeriodForm.processing}>
+                                    Guardar Cambios
+                                </Button>
+                            </div>
+                        </form>
+                    </DialogContent>
+                </Dialog>
 
                 {/* Academic Period Rollover Wizard Dialog */}
                 <AcademicPeriodRolloverDialog
