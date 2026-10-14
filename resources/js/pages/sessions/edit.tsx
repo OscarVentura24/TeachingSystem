@@ -494,7 +494,7 @@ export default function SessionEdit({ course, session, students, courseTopics }:
                                                         checked={isChecked}
                                                         ref={(el) => {
                                                             if (el && hasSubtopics) {
-                                                                el.indeterminate = someSubSelected && !allSubSelected;
+                                                                el.indeterminate = Boolean(someSubSelected && !allSubSelected);
                                                             }
                                                         }}
                                                         onChange={() => toggleTopicGroup(topic)}

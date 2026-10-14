@@ -25,8 +25,8 @@ import {
 interface AcademicPeriod {
     id: number;
     name: string;
-    is_current: boolean;
-    is_closed: boolean;
+    is_current?: boolean;
+    is_closed?: boolean;
 }
 
 interface CourseItem {
@@ -92,7 +92,7 @@ export function AcademicPeriodRolloverDialog({
             ...prev,
             clone_course_ids: prev.clone_course_ids.includes(id)
                 ? prev.clone_course_ids.filter((cId) => cId !== id)
-                : [...prev, clone_course_ids, id],
+                : [...prev.clone_course_ids, id],
         }));
     };
 

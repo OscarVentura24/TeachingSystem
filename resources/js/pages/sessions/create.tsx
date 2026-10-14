@@ -455,7 +455,7 @@ export default function SessionCreate({ course, students, courseTopics }: Props)
                                                         checked={isChecked}
                                                         ref={(el) => {
                                                             if (el && hasSubtopics) {
-                                                                el.indeterminate = someSubSelected && !allSubSelected;
+                                                                el.indeterminate = Boolean(someSubSelected && !allSubSelected);
                                                             }
                                                         }}
                                                         onChange={() => toggleTopicGroup(topic)}

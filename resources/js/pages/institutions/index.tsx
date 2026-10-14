@@ -26,6 +26,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 interface InstitutionItem {
     id: number;
@@ -60,6 +61,7 @@ export default function InstitutionsIndex({ institutions, activeInstitutionId, t
     const [search, setSearch] = useState('');
     const [sortField, setSortField] = useState<InstitutionSortField>('name');
     const [sortDirection, setSortDirection] = useState<InstitutionSortDirection>('asc');
+    const { confirm, ConfirmDialogComponent } = useConfirmDialog();
 
     const createForm = useForm({
         name: '',
@@ -158,12 +160,16 @@ export default function InstitutionsIndex({ institutions, activeInstitutionId, t
     const handleDelete = (inst: InstitutionItem) => {
         const warning =
             inst.courses_count > 0 || inst.students_count > 0
-                ? `La institución "${inst.name}" cuenta con ${inst.courses_count} cursos y ${inst.students_count} estudiantes registrados. Al eliminarla, se desactivará para proteger el historial académico. ¿Continuar?`
-                : `¿Estás seguro de eliminar permanentemente la institución "${inst.name}"?`;
+                ? `La institución "${inst.name}" cuenta con ${inst.courses_count} cursos y ${inst.students_count} estudiantes registrados. Al eliminarla, se desactivará para proteger el historial académico.`
+                : `Se eliminará la institución "${inst.name}". Esta acción no se puede deshacer.`;
 
-        if (confirm(warning)) {
-            router.delete(`/institutions/${inst.id}`);
-        }
+        confirm({
+            title: `¿Eliminar la institución "${inst.name}"?`,
+            description: warning,
+            confirmText: 'Eliminar Institución',
+            variant: 'destructive',
+            onConfirm: () => router.delete(`/institutions/${inst.id}`),
+        });
     };
 
     const handleSwitchToInstitution = (instId: number) => {
@@ -562,6 +568,9 @@ export default function InstitutionsIndex({ institutions, activeInstitutionId, t
                     </DialogContent>
                 </Dialog>
             )}
+
+            {/* Custom Confirmation Dialog */}
+            <ConfirmDialogComponent />
         </>
     );
 }

@@ -37,6 +37,7 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 interface SubjectItem {
     id: number;
@@ -108,6 +109,7 @@ export default function TopicsIndex({
     const [search, setSearch] = useState('');
     const [sortField, setSortField] = useState<TopicSortField>('title');
     const [sortDirection, setSortDirection] = useState<TopicSortDirection>('asc');
+    const { confirm, ConfirmDialogComponent } = useConfirmDialog();
 
     const createForm = useForm({
         title: '',
@@ -287,22 +289,28 @@ export default function TopicsIndex({
     const handleDelete = (topic: TopicItem) => {
         const isGlobal = topic.is_global && !topic.institution_id;
         const msg = isGlobal
-            ? `¿Estás seguro de eliminar el tema "${topic.title}" del Banco Global?\n\nLos cursos que ya tengan este tema en su pensum conservarán su copia local histórica, pero ya no aparecerá disponible para nuevos cursos.`
-            : `¿Estás seguro de eliminar el tema institucional "${topic.title}"?\n\nSolo será eliminado del banco de temas de tu institución.`;
+            ? 'Los cursos que ya tengan este tema en su pensum conservarán su copia local histórica, pero ya no estará disponible para nuevos cursos.'
+            : 'Solo será eliminado del banco de temas de tu institución.';
 
-        if (confirm(msg)) {
-            router.delete(`/topics/${topic.id}`);
-        }
+        confirm({
+            title: isGlobal
+                ? `¿Eliminar "${topic.title}" del Banco Global?`
+                : `¿Eliminar el tema "${topic.title}"?`,
+            description: msg,
+            confirmText: 'Eliminar Tema',
+            variant: 'destructive',
+            onConfirm: () => router.delete(`/topics/${topic.id}`),
+        });
     };
 
     const handlePromote = (topic: TopicItem) => {
-        if (
-            confirm(
-                `¿Habilitar el tema "${topic.title}" para el Banco Global?\n\nAl aprobarlo, todas las instituciones del sistema tendrán este tema disponible en su catálogo.`
-            )
-        ) {
-            router.post(`/topics/${topic.id}/promote`);
-        }
+        confirm({
+            title: `¿Habilitar "${topic.title}" para el Banco Global?`,
+            description: 'Al aprobarlo, todas las instituciones del sistema tendrán este tema disponible en su catálogo.',
+            confirmText: 'Habilitar en Banco Global',
+            variant: 'primary',
+            onConfirm: () => router.post(`/topics/${topic.id}/promote`),
+        });
     };
 
     const handleForkGlobalTopic = (topic: TopicItem) => {
@@ -587,7 +595,7 @@ export default function TopicsIndex({
                                                     options={subjectOptions}
                                                     value={createForm.data.subject_id}
                                                     onChange={(sId) => {
-                                                        createForm.setData('subject_id', sId);
+                                                        createForm.setData('subject_id', String(sId));
                                                         const found = subjects.find((s) => s.id === Number(sId));
                                                         if (found) {
                                                             createForm.setData('area', found.name);
@@ -762,7 +770,7 @@ export default function TopicsIndex({
                                                     options={subjectOptions}
                                                     value={editForm.data.subject_id}
                                                     onChange={(sId) => {
-                                                        editForm.setData('subject_id', sId);
+                                                        editForm.setData('subject_id', String(sId));
                                                         const found = subjects.find((s) => s.id === Number(sId));
                                                         if (found) {
                                                             editForm.setData('area', found.name);
@@ -1457,6 +1465,9 @@ export default function TopicsIndex({
                         </table>
                     </div>
                 )}
+
+                {/* Custom Confirmation Dialog */}
+                <ConfirmDialogComponent />
             </div>
         </>
     );

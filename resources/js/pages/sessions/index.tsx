@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { formatNaturalDateWithDay } from '@/lib/formatters';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 interface SessionStudent {
     id: number;
@@ -92,6 +93,7 @@ export default function SessionsIndex({ sessions, courses, filters }: Props) {
     const [selectedStatus, setSelectedStatus] = useState(filters.status || '');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(filters.direction || 'desc');
     const [updatingStatusId, setUpdatingStatusId] = useState<number | null>(null);
+    const { confirm, ConfirmDialogComponent } = useConfirmDialog();
 
     const handleApplyFilters = (newOverrides: Partial<typeof filters> = {}) => {
         router.get(
@@ -134,15 +136,17 @@ export default function SessionsIndex({ sessions, courses, filters }: Props) {
 
     const handleDeleteSession = (session: ClassSessionItem) => {
         const title = session.title ? `"${session.title}"` : `la sesión #${session.id}`;
-        if (
-            confirm(
-                `¿Estás seguro de eliminar ${title} de ${session.course.name}?\n\nEsta acción eliminará el registro de asistencia y la acreditación de esta fecha.`
-            )
-        ) {
-            router.delete(`/sessions/${session.id}`, {
-                preserveScroll: true,
-            });
-        }
+        confirm({
+            title: `¿Eliminar ${title}?`,
+            description: `Se eliminará la sesión del curso "${session.course.name}", junto con el registro de asistencia de esta fecha.`,
+            confirmText: 'Eliminar Sesión',
+            variant: 'destructive',
+            onConfirm: () => {
+                router.delete(`/sessions/${session.id}`, {
+                    preserveScroll: true,
+                });
+            },
+        });
     };
 
     // Calculate metrics
@@ -479,6 +483,9 @@ export default function SessionsIndex({ sessions, courses, filters }: Props) {
                         })}
                     </div>
                 )}
+
+                {/* Custom Confirmation Dialog */}
+                <ConfirmDialogComponent />
             </div>
         </>
     );

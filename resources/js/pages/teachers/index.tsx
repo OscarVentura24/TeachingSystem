@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
     Dialog,
     DialogContent,
@@ -79,6 +80,7 @@ export default function TeachersIndex({ teachers, institutions, courses, activeI
     const [roleFilter, setRoleFilter] = useState<'all' | 'teacher' | 'admin'>('all');
     const [sortField, setSortField] = useState<TeacherSortField>('name');
     const [sortDirection, setSortDirection] = useState<TeacherSortDirection>('asc');
+    const { confirm, ConfirmDialogComponent } = useConfirmDialog();
 
     const defaultInstId = activeInstitution?.id || (institutions.length > 0 ? institutions[0].id : '');
 
@@ -203,21 +205,24 @@ export default function TeachersIndex({ teachers, institutions, courses, activeI
     const handleDelete = (teacher: TeacherItem) => {
         const warning =
             teacher.sessions_count > 0
-                ? `El docente "${teacher.name}" tiene ${teacher.sessions_count} sesiones de clase registradas. Al eliminarlo, se desactivará su cuenta y se desvinculará de los cursos para proteger el historial académico de los estudiantes. ¿Deseas continuar?`
-                : `¿Estás seguro de eliminar al docente "${teacher.name}"? Esta acción no se puede deshacer.`;
+                ? `El docente "${teacher.name}" tiene ${teacher.sessions_count} sesiones registradas. Al eliminarlo, se desactivará su cuenta y se desvinculará de los cursos para proteger el historial académico de los estudiantes.`
+                : `Se desvinculará y desactivará la cuenta del docente "${teacher.name}". Esta acción no se puede deshacer.`;
 
-        if (confirm(warning)) {
-            router.delete(`/teachers/${teacher.id}`);
-        }
+        confirm({
+            title: `¿Eliminar al docente "${teacher.name}"?`,
+            description: warning,
+            confirmText: 'Eliminar Docente',
+            variant: 'destructive',
+            onConfirm: () => router.delete(`/teachers/${teacher.id}`),
+        });
     };
 
     const toggleCourseSelection = (form: typeof createForm | typeof editForm, courseId: number) => {
         const current = form.data.course_ids;
-        if (current.includes(courseId)) {
-            form.setData('course_ids', current.filter((id) => id !== courseId));
-        } else {
-            form.setData('course_ids', [...current, courseId]);
-        }
+        const updated = current.includes(courseId)
+            ? current.filter((id) => id !== courseId)
+            : [...current, courseId];
+        (form.setData as any)('course_ids', updated);
     };
 
     return (
@@ -819,6 +824,9 @@ export default function TeachersIndex({ teachers, institutions, courses, activeI
                     </DialogContent>
                 </Dialog>
             )}
+
+            {/* Custom Confirmation Dialog */}
+            <ConfirmDialogComponent />
         </>
     );
 }

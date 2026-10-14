@@ -32,6 +32,7 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 interface InstitutionItem {
     id: number;
@@ -126,6 +127,7 @@ export default function StudentsIndex({
     const [openCreateDialog, setOpenCreateDialog] = useState(false);
     const [openEditDialog, setOpenEditDialog] = useState(false);
     const [editingStudent, setEditingStudent] = useState<StudentItem | null>(null);
+    const { confirm, ConfirmDialogComponent } = useConfirmDialog();
 
     // Multi-factor sorting state
     const [sortField, setSortField] = useState<SortField>(() => {
@@ -369,13 +371,13 @@ export default function StudentsIndex({
 
     const handleDelete = (student: StudentItem) => {
         const fullName = `${student.first_name} ${student.last_name}`;
-        if (
-            confirm(
-                `¿Estás seguro de eliminar a "${fullName}" del padrón de la institución?\n\nSe eliminarán también sus matrículas en cursos y registros asociados.`
-            )
-        ) {
-            router.delete(`/students/${student.id}`);
-        }
+        confirm({
+            title: `¿Eliminar a "${fullName}" del padrón?`,
+            description: 'Se eliminarán sus matrículas y registros asociados en esta institución de manera definitiva.',
+            confirmText: 'Eliminar Estudiante',
+            variant: 'destructive',
+            onConfirm: () => router.delete(`/students/${student.id}`),
+        });
     };
 
     const institutionOptions = institutions.map((inst) => ({
@@ -1095,6 +1097,9 @@ export default function StudentsIndex({
                         </table>
                     </div>
                 )}
+
+                {/* Custom Confirmation Dialog */}
+                <ConfirmDialogComponent />
             </div>
         </>
     );

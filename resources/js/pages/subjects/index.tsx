@@ -12,6 +12,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 interface SubjectItem {
     id: number;
@@ -35,6 +36,7 @@ export default function SubjectsIndex({ subjects, isGlobalMode = false }: Props)
     const [search, setSearch] = useState('');
     const [sortField, setSortField] = useState<SubjectSortField>('name');
     const [sortDirection, setSortDirection] = useState<SubjectSortDirection>('asc');
+    const { confirm, ConfirmDialogComponent } = useConfirmDialog();
 
     const createForm = useForm({
         name: '',
@@ -123,13 +125,13 @@ export default function SubjectsIndex({ subjects, isGlobalMode = false }: Props)
     };
 
     const handleDelete = (subject: SubjectItem) => {
-        if (
-            confirm(
-                `¿Estás seguro de eliminar la asignatura "${subject.name}"? Los temas asociados conservarán sus datos y quedarán sin asignatura asignada.`
-            )
-        ) {
-            router.delete(`/subjects/${subject.id}`);
-        }
+        confirm({
+            title: `¿Eliminar la asignatura "${subject.name}"?`,
+            description: 'Los temas asociados conservarán sus datos y quedarán sin asignatura asignada.',
+            confirmText: 'Eliminar Asignatura',
+            variant: 'destructive',
+            onConfirm: () => router.delete(`/subjects/${subject.id}`),
+        });
     };
 
     return (
@@ -394,6 +396,9 @@ export default function SubjectsIndex({ subjects, isGlobalMode = false }: Props)
                         ))}
                     </div>
                 )}
+
+                {/* Custom Confirmation Dialog */}
+                <ConfirmDialogComponent />
             </div>
         </>
     );

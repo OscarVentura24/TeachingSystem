@@ -44,6 +44,7 @@ import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { formatNaturalDateWithDay } from '@/lib/formatters';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 interface CourseTopic {
     id: number;
@@ -152,6 +153,7 @@ export default function CourseShow({
     const [openEnrollDialog, setOpenEnrollDialog] = useState(false);
     const [openAddTeacherDialog, setOpenAddTeacherDialog] = useState(false);
     const [openEditCourseDialog, setOpenEditCourseDialog] = useState(false);
+    const { confirm, ConfirmDialogComponent } = useConfirmDialog();
 
     // Form to edit course
     const editCourseForm = useForm({
@@ -267,33 +269,43 @@ export default function CourseShow({
     const [syncingTopicId, setSyncingTopicId] = useState<number | null>(null);
 
     const handleSyncAllTopics = () => {
-        if (!confirm('¿Deseas actualizar todos los temas vinculados con el Banco Global?\n\nSe actualizarán sus títulos, descripciones y nuevos subtemas, manteniendo intacto el orden actual del pensum.')) {
-            return;
-        }
-        setIsSyncingTopics(true);
-        router.post(
-            `/courses/${course.id}/topics/sync`,
-            {},
-            {
-                preserveScroll: true,
-                onFinish: () => setIsSyncingTopics(false),
-            }
-        );
+        confirm({
+            title: '¿Sincronizar temas con el Banco Global?',
+            description: 'Se actualizarán títulos, descripciones y nuevos subtemas desde el banco central, manteniendo intacto el orden actual del pensum.',
+            confirmText: 'Sincronizar Temas',
+            variant: 'primary',
+            onConfirm: () => {
+                setIsSyncingTopics(true);
+                router.post(
+                    `/courses/${course.id}/topics/sync`,
+                    {},
+                    {
+                        preserveScroll: true,
+                        onFinish: () => setIsSyncingTopics(false),
+                    }
+                );
+            },
+        });
     };
 
     const handleSyncSingleTopic = (topicId: number, title: string) => {
-        if (!confirm(`¿Actualizar el tema "${title}" y sus subtemas con la información más reciente del Banco Global?\n\nEl orden en el pensum se mantendrá intacto.`)) {
-            return;
-        }
-        setSyncingTopicId(topicId);
-        router.post(
-            `/courses/${course.id}/topics/${topicId}/sync`,
-            {},
-            {
-                preserveScroll: true,
-                onFinish: () => setSyncingTopicId(null),
-            }
-        );
+        confirm({
+            title: `¿Actualizar "${title}"?`,
+            description: 'Se actualizará este tema y sus subtemas con la información más reciente del Banco Global, manteniendo su orden en el pensum.',
+            confirmText: 'Actualizar Tema',
+            variant: 'primary',
+            onConfirm: () => {
+                setSyncingTopicId(topicId);
+                router.post(
+                    `/courses/${course.id}/topics/${topicId}/sync`,
+                    {},
+                    {
+                        preserveScroll: true,
+                        onFinish: () => setSyncingTopicId(null),
+                    }
+                );
+            },
+        });
     };
 
     const handleOpenAddSubtopic = (parentCourseTopic: CourseTopic) => {
@@ -369,9 +381,13 @@ export default function CourseShow({
     };
 
     const handleRemoveTeacher = (teacherId: number, teacherName: string) => {
-        if (confirm(`¿Desvincular al docente "${teacherName}" de este curso?`)) {
-            router.delete(`/courses/${course.id}/teachers/${teacherId}`);
-        }
+        confirm({
+            title: `¿Desvincular a "${teacherName}"?`,
+            description: 'El docente dejará de estar asignado a este curso. Las clases y asistencias ya registradas no se verán afectadas.',
+            confirmText: 'Desvincular Docente',
+            variant: 'destructive',
+            onConfirm: () => router.delete(`/courses/${course.id}/teachers/${teacherId}`),
+        });
     };
 
     const handleEditCourseSubmit = (e: React.FormEvent) => {
@@ -384,9 +400,13 @@ export default function CourseShow({
     };
 
     const handleRemoveTopicFromPensum = (topicId: number, title: string) => {
-        if (confirm(`¿Estás seguro de retirar el tema "${title}" del pensum de este curso?`)) {
-            router.delete(`/courses/${course.id}/topics/${topicId}`);
-        }
+        confirm({
+            title: `¿Retirar "${title}" del pensum?`,
+            description: 'Este tema y sus subtemas se retirarán del programa de este curso.',
+            confirmText: 'Retirar del Pensum',
+            variant: 'destructive',
+            onConfirm: () => router.delete(`/courses/${course.id}/topics/${topicId}`),
+        });
     };
 
     const handleReorderCourseSubtopics = (parentTopic: CourseTopic, currentIndex: number, direction: 'up' | 'down') => {
@@ -426,9 +446,13 @@ export default function CourseShow({
     };
 
     const handleRemoveStudent = (studentId: number, name: string) => {
-        if (confirm(`¿Desmatricular a "${name}" de este curso?\n\nSus registros históricos en sesiones previas se conservarán.`)) {
-            router.delete(`/courses/${course.id}/students/${studentId}`);
-        }
+        confirm({
+            title: `¿Desmatricular a "${name}"?`,
+            description: 'El estudiante dejará de formar parte de este curso. Sus registros históricos en sesiones previas se conservarán.',
+            confirmText: 'Desmatricular',
+            variant: 'destructive',
+            onConfirm: () => router.delete(`/courses/${course.id}/students/${studentId}`),
+        });
     };
 
     const handleUpdateSessionStatus = (sessionId: number, newStatus: string) => {
@@ -441,11 +465,17 @@ export default function CourseShow({
 
     const handleDeleteSession = (sessionId: number, title?: string) => {
         const displayTitle = title ? `"${title}"` : `la sesión #${sessionId}`;
-        if (confirm(`¿Estás seguro de eliminar ${displayTitle}?\n\nEsta acción eliminará el registro de asistencia y la acreditación de esta fecha.`)) {
-            router.delete(`/courses/${course.id}/sessions/${sessionId}`, {
-                preserveScroll: true,
-            });
-        }
+        confirm({
+            title: `¿Eliminar ${displayTitle}?`,
+            description: 'Esta acción eliminará el registro de asistencia y la acreditación de contenidos de esta fecha.',
+            confirmText: 'Eliminar Sesión',
+            variant: 'destructive',
+            onConfirm: () => {
+                router.delete(`/courses/${course.id}/sessions/${sessionId}`, {
+                    preserveScroll: true,
+                });
+            },
+        });
     };
 
     return (
@@ -1639,6 +1669,9 @@ export default function CourseShow({
                         courseTopics={course.course_topics || []}
                     />
                 )}
+
+                {/* Custom Confirmation Dialog */}
+                <ConfirmDialogComponent />
             </div>
         </>
     );

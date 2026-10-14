@@ -36,6 +36,7 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { AcademicPeriodRolloverDialog } from '@/components/academic-period-rollover-dialog';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 interface Institution {
     id: number;
@@ -93,6 +94,7 @@ export default function CoursesIndex({
     const [editingCourse, setEditingCourse] = useState<CourseItem | null>(null);
     const [openPeriodDialog, setOpenPeriodDialog] = useState(false);
     const [openRolloverDialog, setOpenRolloverDialog] = useState(false);
+    const { confirm, ConfirmDialogComponent } = useConfirmDialog();
 
     // Search & Multi-factor sorting state
     const [search, setSearch] = useState('');
@@ -119,23 +121,23 @@ export default function CoursesIndex({
     }, [academicPeriods]);
 
     const handleClosePeriod = (period: AcademicPeriod) => {
-        if (
-            confirm(
-                `¿Estás seguro de cerrar el período "${period.name}"?\n\nAl cerrarlo, sus cursos se archivarán en modo histórico de solo lectura, protegiendo las notas y asistencias.`
-            )
-        ) {
-            router.post(`/academic-periods/${period.id}/close`);
-        }
+        confirm({
+            title: `¿Cerrar el período "${period.name}"?`,
+            description: 'Al cerrarlo, sus cursos se archivarán en modo histórico de solo lectura, protegiendo las notas, asistencias y evaluaciones de alteraciones accidentales.',
+            confirmText: 'Cerrar Período',
+            variant: 'warning',
+            onConfirm: () => router.post(`/academic-periods/${period.id}/close`),
+        });
     };
 
     const handleReopenPeriod = (period: AcademicPeriod) => {
-        if (
-            confirm(
-                `¿Deseas reactivar el período "${period.name}"?\n\nLos cursos volverán a estar activos para registrar y editar clases.`
-            )
-        ) {
-            router.post(`/academic-periods/${period.id}/reopen`);
-        }
+        confirm({
+            title: `¿Reactivar el período "${period.name}"?`,
+            description: 'Los cursos volverán a estar activos para registrar y modificar sesiones de clase.',
+            confirmText: 'Reactivar Período',
+            variant: 'primary',
+            onConfirm: () => router.post(`/academic-periods/${period.id}/reopen`),
+        });
     };
 
     const defaultInstId = activeInstitution?.id || institutions[0]?.id || '';
@@ -201,13 +203,13 @@ export default function CoursesIndex({
     };
 
     const handleDeleteCourse = (course: CourseItem) => {
-        if (
-            confirm(
-                `¿Estás seguro de eliminar el curso "${course.name}"?\n\nEsta acción eliminará el curso, su pensum y las sesiones registradas de forma irreversible.`
-            )
-        ) {
-            router.delete(`/courses/${course.id}`);
-        }
+        confirm({
+            title: `¿Eliminar el curso "${course.name}"?`,
+            description: 'Esta acción eliminará el curso, su pensum y las sesiones registradas de forma irreversible.',
+            confirmText: 'Eliminar Curso',
+            variant: 'destructive',
+            onConfirm: () => router.delete(`/courses/${course.id}`),
+        });
     };
 
     const handleCreatePeriodSubmit = (e: React.FormEvent) => {
@@ -884,6 +886,9 @@ export default function CoursesIndex({
                     currentPeriod={currentPeriodInSystem}
                     courses={courses}
                 />
+
+                {/* Custom Confirmation Dialog */}
+                <ConfirmDialogComponent />
             </div>
         </>
     );
