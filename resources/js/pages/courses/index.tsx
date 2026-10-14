@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/dialog';
 import { AcademicPeriodRolloverDialog } from '@/components/academic-period-rollover-dialog';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+import { formatNaturalDate } from '@/lib/formatters';
 
 interface Institution {
     id: number;
@@ -181,10 +182,14 @@ export default function CoursesIndex({
 
     const handleStartEditPeriod = (period: AcademicPeriod) => {
         setEditingPeriod(period);
+        const extractDatePart = (d?: string | null) => {
+            if (!d) return '';
+            return d.includes('T') ? d.split('T')[0] : d;
+        };
         editPeriodForm.setData({
             name: period.name,
-            start_date: period.start_date || '',
-            end_date: period.end_date || '',
+            start_date: extractDatePart(period.start_date),
+            end_date: extractDatePart(period.end_date),
             is_current: Boolean(period.is_current),
         });
         setOpenEditPeriodDialog(true);
@@ -986,27 +991,26 @@ export default function CoursesIndex({
                                                     <span className="font-semibold text-sm text-foreground truncate">
                                                         {period.name}
                                                     </span>
-                                                    {period.is_current && (
+                                                    {period.is_current ? (
                                                         <span className="inline-flex items-center text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-semibold px-2 py-0.5 rounded-full">
-                                                            Actual / Activo
+                                                            Período Activo
                                                         </span>
-                                                    )}
-                                                    {period.is_closed ? (
+                                                    ) : period.is_closed ? (
                                                         <span className="inline-flex items-center text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-400 font-semibold px-2 py-0.5 rounded-full gap-1">
                                                             <Lock className="h-2.5 w-2.5" /> Cerrado
                                                         </span>
                                                     ) : (
                                                         <span className="inline-flex items-center text-[10px] bg-sky-500/15 text-sky-700 dark:text-sky-400 font-medium px-2 py-0.5 rounded-full">
-                                                            Abierto
+                                                            Planificado
                                                         </span>
                                                     )}
                                                 </div>
-                                                <div className="text-xs text-muted-foreground">
+                                                <div className="text-xs text-muted-foreground flex items-center gap-1.5">
                                                     {period.start_date || period.end_date ? (
                                                         <>
-                                                            {period.start_date ? new Date(period.start_date + 'T00:00:00').toLocaleDateString() : 'Sin inicio'}
-                                                            {' — '}
-                                                            {period.end_date ? new Date(period.end_date + 'T00:00:00').toLocaleDateString() : 'Sin fin'}
+                                                            <span>{period.start_date ? formatNaturalDate(period.start_date) : 'Sin fecha inicio'}</span>
+                                                            <span>—</span>
+                                                            <span>{period.end_date ? formatNaturalDate(period.end_date) : 'Sin fecha fin'}</span>
                                                         </>
                                                     ) : (
                                                         'Fechas no definidas'
