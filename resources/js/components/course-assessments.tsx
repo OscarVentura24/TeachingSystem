@@ -72,9 +72,10 @@ interface Props {
     assessments: Assessment[];
     students: Student[];
     courseTopics: CourseTopic[];
+    readOnly?: boolean;
 }
 
-export function CourseAssessments({ courseId, assessments, students, courseTopics }: Props) {
+export function CourseAssessments({ courseId, assessments, students, courseTopics, readOnly = false }: Props) {
     const [viewMode, setViewMode] = useState<'gradebook' | 'list'>('gradebook');
     const [searchStudent, setSearchStudent] = useState('');
     const [openAssessmentDialog, setOpenAssessmentDialog] = useState(false);
@@ -359,9 +360,15 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
                 </div>
 
                 <div className="flex items-center gap-3">
-                    <Button onClick={handleOpenCreate} size="sm" className="gap-1.5 text-xs">
-                        <Plus className="h-3.5 w-3.5" /> Nueva Evaluación
-                    </Button>
+                    {readOnly ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                            <Award className="h-3.5 w-3.5" /> Modo de solo lectura
+                        </span>
+                    ) : (
+                        <Button onClick={handleOpenCreate} size="sm" className="gap-1.5 text-xs">
+                            <Plus className="h-3.5 w-3.5" /> Nueva Evaluación
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -419,7 +426,7 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
                                                     onClick={() => handleOpenGrading(ass)}
                                                     className="mt-1 text-[10px] text-primary hover:underline font-medium block mx-auto"
                                                 >
-                                                    Calificar
+                                                    {readOnly ? 'Ver notas' : 'Calificar'}
                                                 </button>
                                             </th>
                                         ))}
@@ -560,26 +567,28 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
                                                     </p>
                                                 )}
                                             </div>
-                                            <div className="flex items-center gap-1 shrink-0">
-                                                <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                                                    onClick={() => handleOpenEdit(ass)}
-                                                    title="Editar evaluación"
-                                                >
-                                                    <Edit2 className="h-3.5 w-3.5" />
-                                                </Button>
-                                                <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                                    onClick={() => setDeleteAssessmentConfirm(ass)}
-                                                    title="Eliminar evaluación"
-                                                >
-                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                </Button>
-                                            </div>
+                                            {!readOnly && (
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                                        onClick={() => handleOpenEdit(ass)}
+                                                        title="Editar evaluación"
+                                                    >
+                                                        <Edit2 className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                                        onClick={() => setDeleteAssessmentConfirm(ass)}
+                                                        title="Eliminar evaluación"
+                                                    >
+                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground pt-1 border-t">
@@ -625,7 +634,7 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
                                                 onClick={() => handleOpenGrading(ass)}
                                                 className="text-xs gap-1.5"
                                             >
-                                                <Check className="h-3.5 w-3.5" /> Ingresar Calificaciones
+                                                <Check className="h-3.5 w-3.5" /> {readOnly ? 'Ver Calificaciones' : 'Ingresar Calificaciones'}
                                             </Button>
                                         </div>
                                     </div>
@@ -807,10 +816,11 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
                 <DialogContent className="max-w-3xl">
                     <DialogHeader>
                         <DialogTitle className="text-base font-semibold">
-                            Calificar: {gradingAssessment?.title}
+                            {readOnly ? 'Consultar Calificaciones: ' : 'Calificar: '} {gradingAssessment?.title}
                         </DialogTitle>
                         <DialogDescription className="text-xs">
                             Escala de calificación: 0 a {gradingAssessment ? Number(gradingAssessment.max_score) : 100} pts (Aprobatoria: &ge; {gradingAssessment ? Number(gradingAssessment.passing_score) : 70}).
+                            {readOnly && ' (Modo de solo lectura)'}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -853,13 +863,14 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
                                                 <td className="px-3 py-2">
                                                     <select
                                                         value={row.status}
+                                                        disabled={readOnly}
                                                         onChange={(e) =>
                                                             setGradingScores({
                                                                 ...gradingScores,
                                                                 [st.id]: { ...row, status: e.target.value as any },
                                                             })
                                                         }
-                                                        className="w-full px-2 py-1 rounded border bg-background text-[11px]"
+                                                        className="w-full px-2 py-1 rounded border bg-background text-[11px] disabled:opacity-75 disabled:cursor-not-allowed"
                                                     >
                                                         <option value="present">Presente</option>
                                                         <option value="absent">Ausente</option>
@@ -874,7 +885,7 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
                                                         step="0.5"
                                                         min="0"
                                                         max={maxScore}
-                                                        disabled={row.status !== 'present'}
+                                                        disabled={readOnly || row.status !== 'present'}
                                                         placeholder="0"
                                                         value={row.score}
                                                         onChange={(e) =>
@@ -883,7 +894,7 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
                                                                 [st.id]: { ...row, score: e.target.value },
                                                             })
                                                         }
-                                                        className="w-20 px-2 py-1 text-xs text-center font-mono font-bold rounded border bg-background focus:ring-1 focus:ring-primary"
+                                                        className="w-20 px-2 py-1 text-xs text-center font-mono font-bold rounded border bg-background focus:ring-1 focus:ring-primary disabled:opacity-75 disabled:cursor-not-allowed"
                                                     />
                                                 </td>
 
@@ -913,6 +924,7 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
                                                     <input
                                                         type="text"
                                                         placeholder="Nota u observación..."
+                                                        disabled={readOnly}
                                                         value={row.feedback}
                                                         onChange={(e) =>
                                                             setGradingScores({
@@ -920,7 +932,7 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
                                                                 [st.id]: { ...row, feedback: e.target.value },
                                                             })
                                                         }
-                                                        className="w-full px-2 py-1 text-[11px] rounded border bg-background"
+                                                        className="w-full px-2 py-1 text-[11px] rounded border bg-background disabled:opacity-75 disabled:cursor-not-allowed"
                                                     />
                                                 </td>
                                             </tr>
@@ -932,12 +944,20 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
                     </div>
 
                     <DialogFooter>
-                        <Button type="button" variant="outline" size="sm" onClick={() => setOpenGradingDialog(false)}>
-                            Cancelar
-                        </Button>
-                        <Button type="button" size="sm" onClick={handleSaveScores} disabled={isSavingScores}>
-                            {isSavingScores ? 'Guardando...' : 'Guardar Calificaciones'}
-                        </Button>
+                        {readOnly ? (
+                            <Button type="button" size="sm" onClick={() => setOpenGradingDialog(false)}>
+                                Cerrar
+                            </Button>
+                        ) : (
+                            <>
+                                <Button type="button" variant="outline" size="sm" onClick={() => setOpenGradingDialog(false)}>
+                                    Cancelar
+                                </Button>
+                                <Button type="button" size="sm" onClick={handleSaveScores} disabled={isSavingScores}>
+                                    {isSavingScores ? 'Guardando...' : 'Guardar Calificaciones'}
+                                </Button>
+                            </>
+                        )}
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

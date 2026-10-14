@@ -22,6 +22,10 @@ class AssessmentController extends Controller
      */
     public function store(Request $request, Course $course): RedirectResponse
     {
+        if ($course->isReadOnly()) {
+            abort(403, 'No se pueden crear evaluaciones en un curso archivado o perteneciente a un período escolar cerrado.');
+        }
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para gestionar evaluaciones en este curso.');
         }
@@ -70,6 +74,10 @@ class AssessmentController extends Controller
      */
     public function update(Request $request, Course $course, Assessment $assessment): RedirectResponse
     {
+        if ($course->isReadOnly()) {
+            abort(403, 'No se pueden modificar evaluaciones en un curso archivado o perteneciente a un período escolar cerrado.');
+        }
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para gestionar evaluaciones en este curso.');
         }
@@ -124,6 +132,10 @@ class AssessmentController extends Controller
      */
     public function destroy(Request $request, Course $course, Assessment $assessment): RedirectResponse
     {
+        if ($course->isReadOnly()) {
+            abort(403, 'No se pueden eliminar evaluaciones en un curso archivado o perteneciente a un período escolar cerrado.');
+        }
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para gestionar evaluaciones en este curso.');
         }
@@ -142,6 +154,10 @@ class AssessmentController extends Controller
      */
     public function saveScores(Request $request, Course $course, Assessment $assessment): RedirectResponse
     {
+        if ($course->isReadOnly()) {
+            abort(403, 'No se pueden calificar evaluaciones en un curso archivado o perteneciente a un período escolar cerrado.');
+        }
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para calificar evaluaciones en este curso.');
         }

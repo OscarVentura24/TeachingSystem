@@ -101,6 +101,10 @@ class ClassSessionController extends Controller
      */
     public function create(Request $request, Course $course): Response
     {
+        if ($course->isReadOnly()) {
+            abort(403, 'No se pueden iniciar sesiones de clase en un curso archivado o perteneciente a un período escolar cerrado.');
+        }
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para gestionar sesiones en este curso.');
         }
@@ -149,6 +153,10 @@ class ClassSessionController extends Controller
      */
     public function store(Request $request, Course $course): RedirectResponse
     {
+        if ($course->isReadOnly()) {
+            abort(403, 'No se pueden registrar sesiones de clase en un curso archivado o perteneciente a un período escolar cerrado.');
+        }
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para gestionar sesiones en este curso.');
         }
@@ -240,6 +248,10 @@ class ClassSessionController extends Controller
      */
     public function edit(Request $request, Course $course, ClassSession $session): Response
     {
+        if ($course->isReadOnly()) {
+            abort(403, 'No se pueden editar sesiones de clase en un curso archivado o perteneciente a un período escolar cerrado.');
+        }
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para gestionar sesiones en este curso.');
         }
@@ -278,6 +290,10 @@ class ClassSessionController extends Controller
      */
     public function update(Request $request, Course $course, ClassSession $session): RedirectResponse
     {
+        if ($course->isReadOnly()) {
+            abort(403, 'No se pueden modificar sesiones de clase en un curso archivado o perteneciente a un período escolar cerrado.');
+        }
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para gestionar sesiones en este curso.');
         }
@@ -372,6 +388,10 @@ class ClassSessionController extends Controller
      */
     public function updateStatus(Request $request, Course $course, ClassSession $session): RedirectResponse
     {
+        if ($course->isReadOnly()) {
+            abort(403, 'No se puede modificar el estado de sesiones en un curso archivado o perteneciente a un período escolar cerrado.');
+        }
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para gestionar este curso.');
         }
@@ -433,6 +453,10 @@ class ClassSessionController extends Controller
      */
     public function destroy(Request $request, Course $course, ClassSession $session): RedirectResponse
     {
+        if ($course->isReadOnly()) {
+            abort(403, 'No se pueden eliminar sesiones de clase en un curso archivado o perteneciente a un período escolar cerrado.');
+        }
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para eliminar sesiones en este curso.');
         }

@@ -23,6 +23,13 @@ class Course extends Model
         'status',
     ];
 
+    protected $appends = ['is_read_only'];
+
+    public function getIsReadOnlyAttribute(): bool
+    {
+        return $this->isReadOnly();
+    }
+
     public function institution(): BelongsTo
     {
         return $this->belongsTo(Institution::class);
@@ -65,5 +72,13 @@ class Course extends Model
     public function assessments(): HasMany
     {
         return $this->hasMany(Assessment::class)->orderBy('assessment_date');
+    }
+
+    /**
+     * Determine if this course is in read-only / archived mode.
+     */
+    public function isReadOnly(): bool
+    {
+        return $this->status === 'archived' || (bool) $this->academicPeriod?->is_closed;
     }
 }

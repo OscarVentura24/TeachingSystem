@@ -26,12 +26,17 @@ import {
     RefreshCw,
     CalendarDays,
     Award,
+    Lock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CoverageMatrix } from '@/components/coverage-matrix';
 import { CourseAssessments } from '@/components/course-assessments';
+import {
+    StudentPromotionDialog,
+    TargetCourseOption,
+} from '@/components/student-promotion-dialog';
 import {
     Dialog,
     DialogContent,
@@ -61,9 +66,14 @@ interface Student {
     id: number;
     first_name: string;
     last_name: string;
-    full_name: string;
+    full_name?: string;
     student_id_number?: string;
     preferred_workstation?: string;
+    pivot?: {
+        status?: string;
+        preferred_workstation?: string;
+        enrolled_at?: string;
+    };
 }
 
 interface SessionItem {
@@ -121,8 +131,10 @@ interface Props {
         name: string;
         section?: string;
         code?: string;
+        status?: string;
+        is_read_only?: boolean;
         institution: { id: number; name: string };
-        academic_period?: { id: number; name: string };
+        academic_period?: { id: number; name: string; is_closed?: boolean };
         course_topics: CourseTopic[];
         students: Student[];
         sessions: SessionItem[];
@@ -134,6 +146,7 @@ interface Props {
     availableTeachers?: Array<{ id: number; name: string; email: string }>;
     institutionStudents?: InstitutionStudentItem[];
     canManageTeachers?: boolean;
+    availableTargetCourses?: TargetCourseOption[];
 }
 
 export default function CourseShow({
@@ -143,7 +156,10 @@ export default function CourseShow({
     availableTeachers = [],
     institutionStudents = [],
     canManageTeachers = false,
+    availableTargetCourses = [],
 }: Props) {
+    const isReadOnly = Boolean(course.is_read_only || course.status === 'archived' || course.academic_period?.is_closed);
+    const [openPromotionDialog, setOpenPromotionDialog] = useState(false);
     const [activeTab, setActiveTab] = useState<'matrix' | 'pensum' | 'students' | 'sessions' | 'teachers' | 'grades'>('matrix');
     const [openAddTopicDialog, setOpenAddTopicDialog] = useState(false);
     const [openBulkImportDialog, setOpenBulkImportDialog] = useState(false);
@@ -505,81 +521,115 @@ export default function CourseShow({
                     </div>
 
                     <div className="flex items-center gap-3">
-                        <Button
-                            variant="outline"
-                            className="gap-2"
-                            onClick={() => setOpenEditCourseDialog(true)}
-                        >
-                            <Pencil className="h-4 w-4" /> Editar Curso
-                        </Button>
-
-                        <Link href={`/courses/${course.id}/sessions/create`}>
-                            <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
-                                <Play className="h-4 w-4 fill-white" /> Iniciar Sesión de Clase
+                        {/* Student Promotion Button */}
+                        {course.students.length > 0 && availableTargetCourses.length > 0 && (
+                            <Button
+                                variant="outline"
+                                className="gap-2 border-primary/40 text-primary hover:bg-primary/5 shadow-xs"
+                                onClick={() => setOpenPromotionDialog(true)}
+                                title="Promover, asignar repitentes o registrar retiros hacia el próximo ciclo"
+                            >
+                                <GraduationCap className="h-4 w-4" /> Promover Estudiantes
                             </Button>
-                        </Link>
+                        )}
+
+                        {!isReadOnly && (
+                            <>
+                                <Button
+                                    variant="outline"
+                                    className="gap-2"
+                                    onClick={() => setOpenEditCourseDialog(true)}
+                                >
+                                    <Pencil className="h-4 w-4" /> Editar Curso
+                                </Button>
+
+                                <Link href={`/courses/${course.id}/sessions/create`}>
+                                    <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                                        <Play className="h-4 w-4 fill-white" /> Iniciar Sesión de Clase
+                                    </Button>
+                                </Link>
+                            </>
+                        )}
+
+                        {isReadOnly && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/30">
+                                <Lock className="h-3.5 w-3.5" /> Período Cerrado
+                            </span>
+                        )}
 
                         {/* Edit Course Dialog */}
-                        <Dialog open={openEditCourseDialog} onOpenChange={setOpenEditCourseDialog}>
-                            <DialogContent className="sm:max-w-md">
-                                <DialogHeader>
-                                    <DialogTitle>Editar Información del Curso</DialogTitle>
-                                    <DialogDescription>
-                                        Modifica el nombre, sección o código de este curso.
-                                    </DialogDescription>
-                                </DialogHeader>
+                        {!isReadOnly && (
+                            <Dialog open={openEditCourseDialog} onOpenChange={setOpenEditCourseDialog}>
+                                <DialogContent className="sm:max-w-md">
+                                    <DialogHeader>
+                                        <DialogTitle>Editar Información del Curso</DialogTitle>
+                                        <DialogDescription>
+                                            Modifica el nombre, sección o código de este curso.
+                                        </DialogDescription>
+                                    </DialogHeader>
 
-                                <form onSubmit={handleEditCourseSubmit} className="space-y-4 pt-2">
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor="edit_course_name">Nombre del Curso *</Label>
-                                        <Input
-                                            id="edit_course_name"
-                                            autoFocus
-                                            value={editCourseForm.data.name}
-                                            onChange={(e) => editCourseForm.setData('name', e.target.value)}
-                                            required
-                                        />
-                                        {editCourseForm.errors.name && (
-                                            <p className="text-xs text-destructive">{editCourseForm.errors.name}</p>
-                                        )}
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <form onSubmit={handleEditCourseSubmit} className="space-y-4 pt-2">
                                         <div className="space-y-1.5">
-                                            <Label htmlFor="edit_course_section">Sección / Turno</Label>
+                                            <Label htmlFor="edit_course_name">Nombre del Curso *</Label>
                                             <Input
-                                                id="edit_course_section"
-                                                value={editCourseForm.data.section}
-                                                onChange={(e) => editCourseForm.setData('section', e.target.value)}
+                                                id="edit_course_name"
+                                                autoFocus
+                                                value={editCourseForm.data.name}
+                                                onChange={(e) => editCourseForm.setData('name', e.target.value)}
+                                                required
                                             />
+                                            {editCourseForm.errors.name && (
+                                                <p className="text-xs text-destructive">{editCourseForm.errors.name}</p>
+                                            )}
                                         </div>
-                                        <div className="space-y-1.5">
-                                            <Label htmlFor="edit_course_code">Código</Label>
-                                            <Input
-                                                id="edit_course_code"
-                                                value={editCourseForm.data.code}
-                                                onChange={(e) => editCourseForm.setData('code', e.target.value)}
-                                            />
-                                        </div>
-                                    </div>
 
-                                    <div className="flex justify-end gap-2 pt-2">
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            onClick={() => setOpenEditCourseDialog(false)}
-                                        >
-                                            Cancelar
-                                        </Button>
-                                        <Button type="submit" disabled={editCourseForm.processing}>
-                                            {editCourseForm.processing ? 'Actualizando...' : 'Guardar Cambios'}
-                                        </Button>
-                                    </div>
-                                </form>
-                            </DialogContent>
-                        </Dialog>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor="edit_course_section">Sección / Turno</Label>
+                                                <Input
+                                                    id="edit_course_section"
+                                                    value={editCourseForm.data.section}
+                                                    onChange={(e) => editCourseForm.setData('section', e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor="edit_course_code">Código</Label>
+                                                <Input
+                                                    id="edit_course_code"
+                                                    value={editCourseForm.data.code}
+                                                    onChange={(e) => editCourseForm.setData('code', e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="flex justify-end gap-2 pt-2">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={() => setOpenEditCourseDialog(false)}
+                                            >
+                                                Cancelar
+                                            </Button>
+                                            <Button type="submit" disabled={editCourseForm.processing}>
+                                                {editCourseForm.processing ? 'Actualizando...' : 'Guardar Cambios'}
+                                            </Button>
+                                        </div>
+                                    </form>
+                                </DialogContent>
+                            </Dialog>
+                        )}
                     </div>
                 </div>
+
+                {/* Read-Only Warning Banner */}
+                {isReadOnly && (
+                    <div className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 px-4 py-3 rounded-xl text-xs">
+                        <Lock className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                        <div className="flex-1">
+                            <span className="font-semibold">Curso en modo solo lectura:</span> Este curso pertenece a un período académico cerrado o archivado ({course.academic_period?.name ?? 'Histórico'}). Los contenidos, asistencias y calificaciones se encuentran resguardados y protegidos contra alteraciones accidentales.
+                        </div>
+                    </div>
+                )}
 
                 {/* Tabs navigation */}
                 <div className="flex border-b text-sm font-medium gap-6">
@@ -663,6 +713,7 @@ export default function CourseShow({
                             students={course.students || []}
                             topics={course.course_topics || []}
                             progressByStudent={progressByStudent}
+                            readOnly={isReadOnly}
                         />
                     </div>
                 )}
@@ -679,41 +730,47 @@ export default function CourseShow({
                             </div>
 
                             <div className="flex items-center gap-2">
-                                {hasLinkedTopics && (
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="gap-2"
-                                        disabled={isSyncingTopics}
-                                        onClick={handleSyncAllTopics}
-                                        title="Actualizar temas y subtemas vinculados desde el Banco Global manteniendo intacto el orden del pensum"
-                                    >
-                                        <RefreshCw className={`h-4 w-4 ${isSyncingTopics ? 'animate-spin' : ''}`} />
-                                        {isSyncingTopics ? 'Actualizando...' : 'Actualizar del Banco'}
-                                    </Button>
-                                )}
+                                {isReadOnly ? (
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                                        <Lock className="h-3.5 w-3.5" /> Pensum histórico (Solo lectura)
+                                    </span>
+                                ) : (
+                                    <>
+                                        {hasLinkedTopics && (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="gap-2"
+                                                disabled={isSyncingTopics}
+                                                onClick={handleSyncAllTopics}
+                                                title="Actualizar temas y subtemas vinculados desde el Banco Global manteniendo intacto el orden del pensum"
+                                            >
+                                                <RefreshCw className={`h-4 w-4 ${isSyncingTopics ? 'animate-spin' : ''}`} />
+                                                {isSyncingTopics ? 'Actualizando...' : 'Actualizar del Banco'}
+                                            </Button>
+                                        )}
 
-                                {availableGlobalTopics.length > 0 && (
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="gap-2"
-                                        onClick={() => {
-                                            setSelectedBulkTopicIds(availableGlobalTopics.map((t) => t.id));
-                                            setOpenBulkImportDialog(true);
-                                        }}
-                                    >
-                                        <Download className="h-4 w-4" />
-                                        Importar del Banco ({availableGlobalTopics.length})
-                                    </Button>
-                                )}
+                                        {availableGlobalTopics.length > 0 && (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="gap-2"
+                                                onClick={() => {
+                                                    setSelectedBulkTopicIds(availableGlobalTopics.map((t) => t.id));
+                                                    setOpenBulkImportDialog(true);
+                                                }}
+                                            >
+                                                <Download className="h-4 w-4" />
+                                                Importar del Banco ({availableGlobalTopics.length})
+                                            </Button>
+                                        )}
 
-                                <Dialog open={openAddTopicDialog} onOpenChange={setOpenAddTopicDialog}>
-                                    <DialogTrigger asChild>
-                                        <Button size="sm" className="gap-2">
-                                            <Plus className="h-4 w-4" /> Agregar Tema al Pensum
-                                        </Button>
-                                    </DialogTrigger>
+                                        <Dialog open={openAddTopicDialog} onOpenChange={setOpenAddTopicDialog}>
+                                            <DialogTrigger asChild>
+                                                <Button size="sm" className="gap-2">
+                                                    <Plus className="h-4 w-4" /> Agregar Tema al Pensum
+                                                </Button>
+                                            </DialogTrigger>
                                     <DialogContent className="sm:max-w-lg">
                                         <DialogHeader>
                                             <DialogTitle>Agregar Tema al Pensum</DialogTitle>
@@ -989,32 +1046,36 @@ export default function CourseShow({
                                         </form>
                                     </DialogContent>
                                 </Dialog>
-                            </div>
-                        </div>
+                            </>
+                        )}
+                    </div>
+                </div>
 
-                        {course.course_topics.length === 0 ? (
-                            <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">
-                                <BookOpen className="mx-auto h-8 w-8 text-muted-foreground/50 mb-2" />
-                                <p>No hay temas agregados al pensum todavía.</p>
-                                <div className="flex items-center justify-center gap-2 mt-4">
-                                    {availableGlobalTopics.length > 0 && (
-                                        <Button
-                                            size="sm"
-                                            className="gap-2"
-                                            onClick={() => {
-                                                setSelectedBulkTopicIds(availableGlobalTopics.map((t) => t.id));
-                                                setOpenBulkImportDialog(true);
-                                            }}
-                                        >
-                                            <Download className="h-4 w-4" /> Importar Todos del Banco ({availableGlobalTopics.length})
-                                        </Button>
-                                    )}
-                                    <Button size="sm" variant="outline" onClick={() => setOpenAddTopicDialog(true)}>
-                                        Agregar Tema Manual
+                {course.course_topics.length === 0 ? (
+                    <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">
+                        <BookOpen className="mx-auto h-8 w-8 text-muted-foreground/50 mb-2" />
+                        <p>No hay temas agregados al pensum todavía.</p>
+                        {!isReadOnly && (
+                            <div className="flex items-center justify-center gap-2 mt-4">
+                                {availableGlobalTopics.length > 0 && (
+                                    <Button
+                                        size="sm"
+                                        className="gap-2"
+                                        onClick={() => {
+                                            setSelectedBulkTopicIds(availableGlobalTopics.map((t) => t.id));
+                                            setOpenBulkImportDialog(true);
+                                        }}
+                                    >
+                                        <Download className="h-4 w-4" /> Importar Todos del Banco ({availableGlobalTopics.length})
                                     </Button>
-                                </div>
+                                )}
+                                <Button size="sm" variant="outline" onClick={() => setOpenAddTopicDialog(true)}>
+                                    Agregar Tema Manual
+                                </Button>
                             </div>
-                        ) : (
+                        )}
+                    </div>
+                ) : (
                             <div className="divide-y rounded-xl border bg-card">
                                 {course.course_topics.map((topic, index) => (
                                     <div key={topic.id} className="p-4 hover:bg-muted/10 transition-colors">
@@ -1041,66 +1102,68 @@ export default function CourseShow({
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-center gap-1 shrink-0">
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-20"
-                                                    disabled={index === 0}
-                                                    onClick={() => handleReorderCourseRootTopics(index, 'up')}
-                                                    title="Subir tema en el pensum"
-                                                >
-                                                    <ChevronUp className="h-4 w-4" />
-                                                </Button>
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-20"
-                                                    disabled={index === course.course_topics.length - 1}
-                                                    onClick={() => handleReorderCourseRootTopics(index, 'down')}
-                                                    title="Bajar tema en el pensum"
-                                                >
-                                                    <ChevronDown className="h-4 w-4" />
-                                                </Button>
-
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-8 px-2 text-xs text-muted-foreground hover:text-primary gap-1"
-                                                    onClick={() => handleOpenAddSubtopic(topic)}
-                                                    title="Agregar subtema a este tema"
-                                                >
-                                                    <Plus className="h-3.5 w-3.5" /> Subtema
-                                                </Button>
-
-                                                {topic.topic_id && (
+                                            {!isReadOnly && (
+                                                <div className="flex items-center gap-1 shrink-0">
                                                     <Button
                                                         type="button"
                                                         variant="ghost"
                                                         size="sm"
-                                                        className="h-8 w-8 p-0 text-muted-foreground hover:text-primary"
-                                                        disabled={syncingTopicId === topic.id}
-                                                        onClick={() => handleSyncSingleTopic(topic.id, topic.title)}
-                                                        title="Actualizar este tema y sus subtemas desde el Banco Global"
+                                                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-20"
+                                                        disabled={index === 0}
+                                                        onClick={() => handleReorderCourseRootTopics(index, 'up')}
+                                                        title="Subir tema en el pensum"
                                                     >
-                                                        <RefreshCw className={`h-3.5 w-3.5 ${syncingTopicId === topic.id ? 'animate-spin' : ''}`} />
+                                                        <ChevronUp className="h-4 w-4" />
                                                     </Button>
-                                                )}
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-20"
+                                                        disabled={index === course.course_topics.length - 1}
+                                                        onClick={() => handleReorderCourseRootTopics(index, 'down')}
+                                                        title="Bajar tema en el pensum"
+                                                    >
+                                                        <ChevronDown className="h-4 w-4" />
+                                                    </Button>
 
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                                                    onClick={() => handleRemoveTopicFromPensum(topic.id, topic.title)}
-                                                    title="Retirar tema del pensum"
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-8 px-2 text-xs text-muted-foreground hover:text-primary gap-1"
+                                                        onClick={() => handleOpenAddSubtopic(topic)}
+                                                        title="Agregar subtema a este tema"
+                                                    >
+                                                        <Plus className="h-3.5 w-3.5" /> Subtema
+                                                    </Button>
+
+                                                    {topic.topic_id && (
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-primary"
+                                                            disabled={syncingTopicId === topic.id}
+                                                            onClick={() => handleSyncSingleTopic(topic.id, topic.title)}
+                                                            title="Actualizar este tema y sus subtemas desde el Banco Global"
+                                                        >
+                                                            <RefreshCw className={`h-3.5 w-3.5 ${syncingTopicId === topic.id ? 'animate-spin' : ''}`} />
+                                                        </Button>
+                                                    )}
+
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                                                        onClick={() => handleRemoveTopicFromPensum(topic.id, topic.title)}
+                                                        title="Retirar tema del pensum"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            )}
                                         </div>
 
                                         {/* Nested Subtopics with Reordering */}
@@ -1124,53 +1187,55 @@ export default function CourseShow({
                                                             )}
                                                         </div>
 
-                                                        <div className="flex items-center gap-0.5 shrink-0">
-                                                            <Button
-                                                                type="button"
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground disabled:opacity-20"
-                                                                disabled={subIdx === 0}
-                                                                onClick={() => handleReorderCourseSubtopics(topic, subIdx, 'up')}
-                                                                title="Subir subtema"
-                                                            >
-                                                                <ChevronUp className="h-3 w-3" />
-                                                            </Button>
-                                                            <Button
-                                                                type="button"
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground disabled:opacity-20"
-                                                                disabled={subIdx === topic.subtopics!.length - 1}
-                                                                onClick={() => handleReorderCourseSubtopics(topic, subIdx, 'down')}
-                                                                title="Bajar subtema"
-                                                            >
-                                                                <ChevronDown className="h-3 w-3" />
-                                                            </Button>
-                                                            {sub.topic_id && (
+                                                        {!isReadOnly && (
+                                                            <div className="flex items-center gap-0.5 shrink-0">
                                                                 <Button
                                                                     type="button"
                                                                     variant="ghost"
                                                                     size="sm"
-                                                                    className="h-6 w-6 p-0 text-muted-foreground hover:text-primary shrink-0"
-                                                                    disabled={syncingTopicId === sub.id}
-                                                                    onClick={() => handleSyncSingleTopic(sub.id, sub.title)}
-                                                                    title="Actualizar subtema desde el Banco Global"
+                                                                    className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground disabled:opacity-20"
+                                                                    disabled={subIdx === 0}
+                                                                    onClick={() => handleReorderCourseSubtopics(topic, subIdx, 'up')}
+                                                                    title="Subir subtema"
                                                                 >
-                                                                    <RefreshCw className={`h-3 w-3 ${syncingTopicId === sub.id ? 'animate-spin' : ''}`} />
+                                                                    <ChevronUp className="h-3 w-3" />
                                                                 </Button>
-                                                            )}
-                                                            <Button
-                                                                type="button"
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive shrink-0 ml-1"
-                                                                onClick={() => handleRemoveTopicFromPensum(sub.id, sub.title)}
-                                                                title="Retirar subtema"
-                                                            >
-                                                                <Trash2 className="h-3 w-3" />
-                                                            </Button>
-                                                        </div>
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground disabled:opacity-20"
+                                                                    disabled={subIdx === topic.subtopics!.length - 1}
+                                                                    onClick={() => handleReorderCourseSubtopics(topic, subIdx, 'down')}
+                                                                    title="Bajar subtema"
+                                                                >
+                                                                    <ChevronDown className="h-3 w-3" />
+                                                                </Button>
+                                                                {sub.topic_id && (
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="h-6 w-6 p-0 text-muted-foreground hover:text-primary shrink-0"
+                                                                        disabled={syncingTopicId === sub.id}
+                                                                        onClick={() => handleSyncSingleTopic(sub.id, sub.title)}
+                                                                        title="Actualizar subtema desde el Banco Global"
+                                                                    >
+                                                                        <RefreshCw className={`h-3 w-3 ${syncingTopicId === sub.id ? 'animate-spin' : ''}`} />
+                                                                    </Button>
+                                                                )}
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive shrink-0 ml-1"
+                                                                    onClick={() => handleRemoveTopicFromPensum(sub.id, sub.title)}
+                                                                    title="Retirar subtema"
+                                                                >
+                                                                    <Trash2 className="h-3 w-3" />
+                                                                </Button>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 ))}
                                             </div>
@@ -1185,7 +1250,7 @@ export default function CourseShow({
                 {/* Tab 3: Students list */}
                 {activeTab === 'students' && (
                     <div className="space-y-4">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div>
                                 <h3 className="text-base font-semibold text-foreground">Alumnos Matriculados</h3>
                                 <p className="text-xs text-muted-foreground">
@@ -1193,98 +1258,114 @@ export default function CourseShow({
                                 </p>
                             </div>
 
-                            <Dialog open={openEnrollDialog} onOpenChange={setOpenEnrollDialog}>
-                                <DialogTrigger asChild>
-                                    <Button size="sm" className="gap-2">
-                                        <Plus className="h-4 w-4" /> Matricular Estudiante
+                            <div className="flex items-center gap-2">
+                                {course.students.length > 0 && availableTargetCourses.length > 0 && (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="gap-2 border-primary/40 text-primary hover:bg-primary/5 shadow-xs"
+                                        onClick={() => setOpenPromotionDialog(true)}
+                                        title="Promover, asignar repitentes o registrar retiros hacia el próximo ciclo"
+                                    >
+                                        <GraduationCap className="h-4 w-4" /> Promover Estudiantes
                                     </Button>
-                                </DialogTrigger>
-                                <DialogContent className="sm:max-w-md">
-                                    <DialogHeader>
-                                        <DialogTitle>Matricular Estudiante en el Curso</DialogTitle>
-                                        <DialogDescription>
-                                            Selecciona a un estudiante previamente registrado por la institución para asignarlo a este curso.
-                                        </DialogDescription>
-                                    </DialogHeader>
+                                )}
 
-                                    {availableStudents.length === 0 ? (
-                                        <div className="py-4 space-y-3">
-                                            <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-                                                <UserCheck className="mx-auto h-8 w-8 text-muted-foreground/40 mb-2" />
-                                                <p className="font-medium text-foreground">
-                                                    {institutionStudents.length === 0
-                                                        ? 'No hay estudiantes matriculados en la institución todavía.'
-                                                        : 'Todos los estudiantes registrados en la institución ya están matriculados en este curso.'}
-                                                </p>
-                                                <p className="mt-1 text-muted-foreground">
-                                                    Los estudiantes deben ser matriculados primero a nivel institucional para estar disponibles en los cursos.
-                                                </p>
-                                            </div>
-                                            <div className="flex justify-between items-center pt-2 border-t">
-                                                <Link
-                                                    href="/students"
-                                                    className="text-xs text-primary hover:underline flex items-center gap-1 font-medium"
-                                                >
-                                                    <Plus className="h-3.5 w-3.5" /> Ir al Padrón Institucional
-                                                </Link>
-                                                <Button type="button" variant="outline" size="sm" onClick={() => setOpenEnrollDialog(false)}>
-                                                    Cerrar
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <form onSubmit={handleEnrollStudentSubmit} className="space-y-4 pt-2">
-                                            <div className="space-y-1.5">
-                                                <div className="flex items-center justify-between">
-                                                    <Label htmlFor="student_id">Estudiante de la Institución *</Label>
-                                                    <Link
-                                                        href="/students"
-                                                        className="text-[11px] text-primary hover:underline flex items-center gap-1"
-                                                    >
-                                                        <Plus className="h-3 w-3" /> Nuevo en Sede
-                                                    </Link>
+                                {!isReadOnly && (
+                                    <Dialog open={openEnrollDialog} onOpenChange={setOpenEnrollDialog}>
+                                        <DialogTrigger asChild>
+                                            <Button size="sm" className="gap-2">
+                                                <Plus className="h-4 w-4" /> Matricular Estudiante
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent className="sm:max-w-md">
+                                            <DialogHeader>
+                                                <DialogTitle>Matricular Estudiante en el Curso</DialogTitle>
+                                                <DialogDescription>
+                                                    Selecciona a un estudiante previamente registrado por la institución para asignarlo a este curso.
+                                                </DialogDescription>
+                                            </DialogHeader>
+
+                                            {availableStudents.length === 0 ? (
+                                                <div className="py-4 space-y-3">
+                                                    <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
+                                                        <UserCheck className="mx-auto h-8 w-8 text-muted-foreground/40 mb-2" />
+                                                        <p className="font-medium text-foreground">
+                                                            {institutionStudents.length === 0
+                                                                ? 'No hay estudiantes matriculados en la institución todavía.'
+                                                                : 'Todos los estudiantes registrados en la institución ya están matriculados en este curso.'}
+                                                        </p>
+                                                        <p className="mt-1 text-muted-foreground">
+                                                            Los estudiantes deben ser matriculados primero a nivel institucional para estar disponibles en los cursos.
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex justify-between items-center pt-2 border-t">
+                                                        <Link
+                                                            href="/students"
+                                                            className="text-xs text-primary hover:underline flex items-center gap-1 font-medium"
+                                                        >
+                                                            <Plus className="h-3.5 w-3.5" /> Ir al Padrón Institucional
+                                                        </Link>
+                                                        <Button type="button" variant="outline" size="sm" onClick={() => setOpenEnrollDialog(false)}>
+                                                            Cerrar
+                                                        </Button>
+                                                    </div>
                                                 </div>
-                                                <SearchableSelect
-                                                    options={studentSelectOptions}
-                                                    value={enrollStudentForm.data.student_id}
-                                                    onChange={(sId) => enrollStudentForm.setData('student_id', String(sId))}
-                                                    placeholder="Buscar por apellido, nombre o cédula..."
-                                                    searchPlaceholder="Escribe el nombre o cédula..."
-                                                    required
-                                                />
-                                                {enrollStudentForm.errors.student_id && (
-                                                    <p className="text-xs text-destructive">{enrollStudentForm.errors.student_id}</p>
-                                                )}
-                                            </div>
+                                            ) : (
+                                                <form onSubmit={handleEnrollStudentSubmit} className="space-y-4 pt-2">
+                                                    <div className="space-y-1.5">
+                                                        <div className="flex items-center justify-between">
+                                                            <Label htmlFor="student_id">Estudiante de la Institución *</Label>
+                                                            <Link
+                                                                href="/students"
+                                                                className="text-[11px] text-primary hover:underline flex items-center gap-1"
+                                                            >
+                                                                <Plus className="h-3 w-3" /> Nuevo en Sede
+                                                            </Link>
+                                                        </div>
+                                                        <SearchableSelect
+                                                            options={studentSelectOptions}
+                                                            value={enrollStudentForm.data.student_id}
+                                                            onChange={(sId) => enrollStudentForm.setData('student_id', String(sId))}
+                                                            placeholder="Buscar por apellido, nombre o cédula..."
+                                                            searchPlaceholder="Escribe el nombre o cédula..."
+                                                            required
+                                                        />
+                                                        {enrollStudentForm.errors.student_id && (
+                                                            <p className="text-xs text-destructive">{enrollStudentForm.errors.student_id}</p>
+                                                        )}
+                                                    </div>
 
-                                            <div className="space-y-1.5">
-                                                <Label htmlFor="preferred_workstation">Puesto / PC Preferida (Laboratorio)</Label>
-                                                <Input
-                                                    id="preferred_workstation"
-                                                    value={enrollStudentForm.data.preferred_workstation}
-                                                    onChange={(e) => enrollStudentForm.setData('preferred_workstation', e.target.value)}
-                                                    placeholder="Ej: PC-01"
-                                                />
-                                                {enrollStudentForm.errors.preferred_workstation && (
-                                                    <p className="text-xs text-destructive">{enrollStudentForm.errors.preferred_workstation}</p>
-                                                )}
-                                            </div>
+                                                    <div className="space-y-1.5">
+                                                        <Label htmlFor="preferred_workstation">Puesto / PC Preferida (Laboratorio)</Label>
+                                                        <Input
+                                                            id="preferred_workstation"
+                                                            value={enrollStudentForm.data.preferred_workstation}
+                                                            onChange={(e) => enrollStudentForm.setData('preferred_workstation', e.target.value)}
+                                                            placeholder="Ej: PC-01"
+                                                        />
+                                                        {enrollStudentForm.errors.preferred_workstation && (
+                                                            <p className="text-xs text-destructive">{enrollStudentForm.errors.preferred_workstation}</p>
+                                                        )}
+                                                    </div>
 
-                                            <div className="flex justify-end gap-2 pt-2">
-                                                <Button type="button" variant="outline" onClick={() => setOpenEnrollDialog(false)}>
-                                                    Cancelar
-                                                </Button>
-                                                <Button
-                                                    type="submit"
-                                                    disabled={enrollStudentForm.processing || !enrollStudentForm.data.student_id}
-                                                >
-                                                    {enrollStudentForm.processing ? 'Matriculando...' : 'Matricular en Curso'}
-                                                </Button>
-                                            </div>
-                                        </form>
-                                    )}
-                                </DialogContent>
-                            </Dialog>
+                                                    <div className="flex justify-end gap-2 pt-2">
+                                                        <Button type="button" variant="outline" onClick={() => setOpenEnrollDialog(false)}>
+                                                            Cancelar
+                                                        </Button>
+                                                        <Button
+                                                            type="submit"
+                                                            disabled={enrollStudentForm.processing || !enrollStudentForm.data.student_id}
+                                                        >
+                                                            {enrollStudentForm.processing ? 'Matriculando...' : 'Matricular en Curso'}
+                                                        </Button>
+                                                    </div>
+                                                </form>
+                                            )}
+                                        </DialogContent>
+                                    </Dialog>
+                                )}
+                            </div>
                         </div>
 
                         {course.students.length === 0 ? (
@@ -1294,18 +1375,20 @@ export default function CourseShow({
                                 <p className="text-xs mt-1">
                                     Incorpora a los estudiantes matriculados previamente por la institución para iniciar el seguimiento pedagógico.
                                 </p>
-                                <div className="mt-4 flex items-center justify-center gap-2">
-                                    <Button size="sm" onClick={() => setOpenEnrollDialog(true)}>
-                                        <Plus className="h-4 w-4 mr-1.5" /> Matricular Estudiante
-                                    </Button>
-                                    {institutionStudents.length === 0 && (
-                                        <Link href="/students">
-                                            <Button size="sm" variant="outline">
-                                                <UserCheck className="h-4 w-4 mr-1.5" /> Padrón de Estudiantes
-                                            </Button>
-                                        </Link>
-                                    )}
-                                </div>
+                                {!isReadOnly && (
+                                    <div className="mt-4 flex items-center justify-center gap-2">
+                                        <Button size="sm" onClick={() => setOpenEnrollDialog(true)}>
+                                            <Plus className="h-4 w-4 mr-1.5" /> Matricular Estudiante
+                                        </Button>
+                                        {institutionStudents.length === 0 && (
+                                            <Link href="/students">
+                                                <Button size="sm" variant="outline">
+                                                    <UserCheck className="h-4 w-4 mr-1.5" /> Padrón de Estudiantes
+                                                </Button>
+                                            </Link>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <div className="rounded-xl border bg-card overflow-hidden">
@@ -1315,7 +1398,10 @@ export default function CourseShow({
                                             <th className="px-4 py-3 font-semibold text-foreground">Nombre Completo</th>
                                             <th className="px-4 py-3 font-semibold text-foreground">Cédula/Carnet</th>
                                             <th className="px-4 py-3 font-semibold text-foreground">Puesto/PC Asignada</th>
-                                            <th className="px-4 py-3 font-semibold text-foreground text-right min-w-[70px]">Acciones</th>
+                                            <th className="px-4 py-3 font-semibold text-foreground">Estado Matrícula</th>
+                                            {!isReadOnly && (
+                                                <th className="px-4 py-3 font-semibold text-foreground text-right min-w-[70px]">Acciones</th>
+                                            )}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border">
@@ -1336,18 +1422,39 @@ export default function CourseShow({
                                                         <span className="text-muted-foreground">Sin puesto fijo</span>
                                                     )}
                                                 </td>
-                                                <td className="px-4 py-3 text-right">
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                                                        onClick={() => handleRemoveStudent(student.id, `${student.first_name} ${student.last_name}`)}
-                                                        title="Desmatricular estudiante"
-                                                    >
-                                                        <Trash2 className="h-3.5 w-3.5" />
-                                                    </Button>
+                                                <td className="px-4 py-3">
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${
+                                                        student.pivot?.status === 'promoted'
+                                                            ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
+                                                            : student.pivot?.status === 'repeated'
+                                                            ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30'
+                                                            : student.pivot?.status === 'withdrawn'
+                                                            ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30'
+                                                            : 'bg-muted text-foreground'
+                                                    }`}>
+                                                        {student.pivot?.status === 'promoted'
+                                                            ? 'Promovido'
+                                                            : student.pivot?.status === 'repeated'
+                                                            ? 'Repitente'
+                                                            : student.pivot?.status === 'withdrawn'
+                                                            ? 'Retirado'
+                                                            : 'Activo'}
+                                                    </span>
                                                 </td>
+                                                {!isReadOnly && (
+                                                    <td className="px-4 py-3 text-right">
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                                            onClick={() => handleRemoveStudent(student.id, `${student.first_name} ${student.last_name}`)}
+                                                            title="Desmatricular estudiante"
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </td>
+                                                )}
                                             </tr>
                                         ))}
                                     </tbody>
@@ -1368,11 +1475,13 @@ export default function CourseShow({
                                 </p>
                             </div>
 
-                            <Link href={`/courses/${course.id}/sessions/create`}>
-                                <Button size="sm" className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
-                                    <Play className="h-3.5 w-3.5 fill-white" /> Iniciar Nueva Sesión
-                                </Button>
-                            </Link>
+                            {!isReadOnly && (
+                                <Link href={`/courses/${course.id}/sessions/create`}>
+                                    <Button size="sm" className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
+                                        <Play className="h-3.5 w-3.5 fill-white" /> Iniciar Nueva Sesión
+                                    </Button>
+                                </Link>
+                            )}
                         </div>
 
                         {course.sessions.length === 0 ? (
@@ -1414,42 +1523,60 @@ export default function CourseShow({
 
                                             {/* Status Selector & Actions */}
                                             <div className="flex items-center gap-2 shrink-0">
-                                                <select
-                                                    value={session.status}
-                                                    onChange={(e) => handleUpdateSessionStatus(session.id, e.target.value)}
-                                                    className={`h-7 rounded-md text-[11px] font-semibold px-2 py-0 cursor-pointer border focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+                                                {isReadOnly ? (
+                                                    <span className={`h-6 rounded-md text-[10px] font-semibold px-2 flex items-center border ${
                                                         session.status === 'completed'
                                                             ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
                                                             : session.status === 'draft'
                                                             ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
                                                             : 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800'
-                                                    }`}
-                                                >
-                                                    <option value="completed">Completada</option>
-                                                    <option value="draft">Borrador</option>
-                                                    <option value="cancelled">Cancelada</option>
-                                                </select>
+                                                    }`}>
+                                                        {session.status === 'completed'
+                                                            ? 'Completada'
+                                                            : session.status === 'draft'
+                                                            ? 'Borrador'
+                                                            : 'Cancelada'}
+                                                    </span>
+                                                ) : (
+                                                    <>
+                                                        <select
+                                                            value={session.status}
+                                                            onChange={(e) => handleUpdateSessionStatus(session.id, e.target.value)}
+                                                            className={`h-7 rounded-md text-[11px] font-semibold px-2 py-0 cursor-pointer border focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+                                                                session.status === 'completed'
+                                                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
+                                                                    : session.status === 'draft'
+                                                                    ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
+                                                                    : 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800'
+                                                            }`}
+                                                        >
+                                                            <option value="completed">Completada</option>
+                                                            <option value="draft">Borrador</option>
+                                                            <option value="cancelled">Cancelada</option>
+                                                        </select>
 
-                                                <Link href={`/courses/${course.id}/sessions/${session.id}/edit`}>
-                                                    <Button
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
-                                                        title="Editar sesión y asistencia"
-                                                    >
-                                                        <Pencil className="h-3.5 w-3.5" /> Editar
-                                                    </Button>
-                                                </Link>
+                                                        <Link href={`/courses/${course.id}/sessions/${session.id}/edit`}>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
+                                                                title="Editar sesión y asistencia"
+                                                            >
+                                                                <Pencil className="h-3.5 w-3.5" /> Editar
+                                                            </Button>
+                                                        </Link>
 
-                                                <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                                                    onClick={() => handleDeleteSession(session.id, session.title)}
-                                                    title="Eliminar sesión de clase"
-                                                >
-                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                                            onClick={() => handleDeleteSession(session.id, session.title)}
+                                                            title="Eliminar sesión de clase"
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
 
@@ -1532,7 +1659,7 @@ export default function CourseShow({
                                 </p>
                             </div>
 
-                            {canManageTeachers && (
+                            {canManageTeachers && !isReadOnly && (
                                 <Dialog open={openAddTeacherDialog} onOpenChange={setOpenAddTeacherDialog}>
                                     <DialogTrigger asChild>
                                         <Button size="sm" className="gap-2">
@@ -1641,7 +1768,7 @@ export default function CourseShow({
                                                 </div>
                                             </div>
 
-                                            {canManageTeachers && (
+                                            {canManageTeachers && !isReadOnly && (
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
@@ -1667,8 +1794,18 @@ export default function CourseShow({
                         assessments={course.assessments || []}
                         students={course.students || []}
                         courseTopics={course.course_topics || []}
+                        readOnly={isReadOnly}
                     />
                 )}
+
+                {/* Student Promotion Dialog */}
+                <StudentPromotionDialog
+                    open={openPromotionDialog}
+                    onOpenChange={setOpenPromotionDialog}
+                    course={course}
+                    students={course.students || []}
+                    availableTargetCourses={availableTargetCourses}
+                />
 
                 {/* Custom Confirmation Dialog */}
                 <ConfirmDialogComponent />

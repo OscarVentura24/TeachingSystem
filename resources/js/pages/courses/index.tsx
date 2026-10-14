@@ -884,28 +884,34 @@ export default function CoursesIndex({
                                             )}
                                         </div>
 
-                                        <div className="flex items-center gap-1 shrink-0">
-                                            <Button
-                                                type="button"
-                                                size="sm"
-                                                variant="ghost"
-                                                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                                                onClick={() => handleStartEditCourse(course)}
-                                                title="Editar Curso"
-                                            >
-                                                <Pencil className="h-3.5 w-3.5" />
-                                            </Button>
-                                            <Button
-                                                type="button"
-                                                size="sm"
-                                                variant="ghost"
-                                                className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                                                onClick={() => handleDeleteCourse(course)}
-                                                title="Eliminar Curso"
-                                            >
-                                                <Trash2 className="h-3.5 w-3.5" />
-                                            </Button>
-                                        </div>
+                                        {course.status === 'archived' || course.academic_period?.is_closed ? (
+                                            <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/80 bg-muted/60 px-2 py-0.5 rounded border border-border/50 shrink-0" title="Curso en modo histórico / solo lectura">
+                                                <Lock className="h-3 w-3" /> Solo lectura
+                                            </span>
+                                        ) : (
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                                                    onClick={() => handleStartEditCourse(course)}
+                                                    title="Editar Curso"
+                                                >
+                                                    <Pencil className="h-3.5 w-3.5" />
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                                    onClick={() => handleDeleteCourse(course)}
+                                                    title="Eliminar Curso"
+                                                >
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </div>
+                                        )}
                                     </div>
 
                                     <h2 className="mt-3 text-lg font-bold text-foreground group-hover:text-primary transition-colors">

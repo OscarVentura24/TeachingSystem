@@ -201,6 +201,20 @@ class CourseController extends Controller
         $canManageTeachers = $request->user()->isInstitutionAdmin($course->institution_id) ||
             $course->teachers()->where('users.id', $request->user()->id)->wherePivot('is_primary', true)->exists();
 
+        // Active target courses for student promotion / transfers
+        $availableTargetCourses = Course::where('institution_id', $course->institution_id)
+            ->where('id', '!=', $course->id)
+            ->where('status', '!=', 'archived')
+            ->where(function ($q) {
+                $q->whereNull('academic_period_id')
+                  ->orWhereHas('academicPeriod', function ($sub) {
+                      $sub->where('is_closed', false);
+                  });
+            })
+            ->with('academicPeriod:id,name,is_current')
+            ->orderBy('name')
+            ->get(['id', 'name', 'section', 'code', 'academic_period_id']);
+
         return Inertia::render('courses/show', [
             'course' => $course,
             'progressByStudent' => $progressRecords,
@@ -208,6 +222,7 @@ class CourseController extends Controller
             'availableTeachers' => $availableTeachers,
             'institutionStudents' => $institutionStudents,
             'canManageTeachers' => $canManageTeachers,
+            'availableTargetCourses' => $availableTargetCourses,
         ]);
     }
 
@@ -216,6 +231,8 @@ class CourseController extends Controller
      */
     public function addTopic(Request $request, Course $course): RedirectResponse
     {
+        $this->ensureCourseNotReadOnly($course);
+
         $validated = $request->validate([
             'topic_id' => ['nullable', 'exists:topics,id'],
             'parent_id' => ['nullable', 'exists:course_topics,id'],
@@ -275,6 +292,8 @@ class CourseController extends Controller
      */
     public function bulkAddTopics(Request $request, Course $course): RedirectResponse
     {
+        $this->ensureCourseNotReadOnly($course);
+
         $validated = $request->validate([
             'topic_ids' => ['required', 'array', 'min:1'],
             'topic_ids.*' => ['integer', 'exists:topics,id'],
@@ -348,6 +367,8 @@ class CourseController extends Controller
      */
     public function syncTopics(Request $request, Course $course): RedirectResponse
     {
+        $this->ensureCourseNotReadOnly($course);
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para modificar el pensum de este curso.');
         }
@@ -391,6 +412,8 @@ class CourseController extends Controller
      */
     public function syncSingleTopic(Request $request, Course $course, CourseTopic $courseTopic): RedirectResponse
     {
+        $this->ensureCourseNotReadOnly($course);
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para modificar el pensum de este curso.');
         }
@@ -509,6 +532,8 @@ class CourseController extends Controller
      */
     public function reorderTopics(Request $request, Course $course): RedirectResponse
     {
+        $this->ensureCourseNotReadOnly($course);
+
         $validated = $request->validate([
             'topic_ids' => ['required', 'array'],
             'topic_ids.*' => ['integer', 'exists:course_topics,id'],
@@ -528,6 +553,8 @@ class CourseController extends Controller
      */
     public function addTeacher(Request $request, Course $course): RedirectResponse
     {
+        $this->ensureCourseNotReadOnly($course);
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para gestionar docentes en este curso.');
         }
@@ -549,6 +576,8 @@ class CourseController extends Controller
      */
     public function removeTeacher(Request $request, Course $course, User $user): RedirectResponse
     {
+        $this->ensureCourseNotReadOnly($course);
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para gestionar docentes en este curso.');
         }
@@ -563,6 +592,8 @@ class CourseController extends Controller
      */
     public function update(Request $request, Course $course): RedirectResponse
     {
+        $this->ensureCourseNotReadOnly($course);
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para editar este curso.');
         }
@@ -586,6 +617,8 @@ class CourseController extends Controller
      */
     public function destroy(Request $request, Course $course): RedirectResponse
     {
+        $this->ensureCourseNotReadOnly($course);
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para eliminar este curso.');
         }
@@ -600,6 +633,8 @@ class CourseController extends Controller
      */
     public function removeTopic(Request $request, Course $course, CourseTopic $courseTopic): RedirectResponse
     {
+        $this->ensureCourseNotReadOnly($course);
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para modificar el pensum de este curso.');
         }
@@ -618,6 +653,8 @@ class CourseController extends Controller
      */
     public function removeStudent(Request $request, Course $course, Student $student): RedirectResponse
     {
+        $this->ensureCourseNotReadOnly($course);
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para gestionar estudiantes en este curso.');
         }
@@ -634,6 +671,8 @@ class CourseController extends Controller
      */
     public function updateStudentProgress(Request $request, Course $course): RedirectResponse
     {
+        $this->ensureCourseNotReadOnly($course);
+
         if (!$request->user()->canManageCourse($course)) {
             abort(403, 'No tienes permiso para gestionar este curso.');
         }
@@ -699,5 +738,15 @@ class CourseController extends Controller
         }
 
         return back()->with('success', 'Progreso del estudiante actualizado.');
+    }
+
+    /**
+     * Ensure the course is not in read-only / archived mode.
+     */
+    protected function ensureCourseNotReadOnly(Course $course): void
+    {
+        if ($course->isReadOnly()) {
+            abort(403, 'No se puede modificar un curso archivado o perteneciente a un período escolar cerrado.');
+        }
     }
 }

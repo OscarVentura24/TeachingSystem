@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { router } from '@inertiajs/react';
-import { CheckCircle2, AlertTriangle, Circle, Search, Loader2 } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Circle, Search, Loader2, Lock } from 'lucide-react';
 import {
     Dialog,
     DialogContent,
@@ -13,7 +13,7 @@ interface Student {
     id: number;
     first_name: string;
     last_name: string;
-    full_name: string;
+    full_name?: string;
     student_id_number?: string;
     preferred_workstation?: string;
 }
@@ -49,9 +49,10 @@ interface Props {
     students: Student[];
     topics: CourseTopic[];
     progressByStudent: Record<number, ProgressRecord[]>;
+    readOnly?: boolean;
 }
 
-export function CoverageMatrix({ courseId, students, topics, progressByStudent }: Props) {
+export function CoverageMatrix({ courseId, students, topics, progressByStudent, readOnly = false }: Props) {
     const [search, setSearch] = useState('');
     const [activeCell, setActiveCell] = useState<ActiveCell | null>(null);
     const [isUpdating, setIsUpdating] = useState(false);
@@ -159,9 +160,14 @@ export function CoverageMatrix({ courseId, students, topics, progressByStudent }
                     />
                 </div>
                 <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-                    {courseId && (
+                    {courseId && !readOnly && (
                         <span className="text-[11px] text-primary font-medium mr-1 hidden sm:inline">
                             💡 Clic en cualquier celda para cambiar su estado
+                        </span>
+                    )}
+                    {readOnly && (
+                        <span className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold mr-1 flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
+                            <Lock className="h-3 w-3" /> Solo lectura (Período cerrado)
                         </span>
                     )}
                     <span className="flex items-center gap-1.5">
@@ -240,7 +246,7 @@ export function CoverageMatrix({ courseId, students, topics, progressByStudent }
                                     </td>
                                     {evaluableTopics.map((item) => {
                                         const progress = getStudentTopicProgress(student.id, item.id);
-                                        const isInteractive = Boolean(courseId);
+                                        const isInteractive = Boolean(courseId) && !readOnly;
 
                                         const onCellClick = () => {
                                             if (!isInteractive) return;

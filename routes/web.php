@@ -32,6 +32,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/courses/{course}/assessments/{assessment}', [AssessmentController::class, 'destroy'])->name('courses.assessments.destroy');
     Route::post('/courses/{course}/assessments/{assessment}/scores', [AssessmentController::class, 'saveScores'])->name('courses.assessments.scores');
     Route::delete('/courses/{course}/students/{student}', [CourseController::class, 'removeStudent'])->name('courses.students.remove');
+    Route::post('/courses/{course}/promote-students', [\App\Http\Controllers\StudentPromotionController::class, 'promote'])->name('courses.students.promote');
 
     // Enrollments
     Route::post('/courses/{course}/enrollments', [EnrollmentController::class, 'store'])->name('courses.enrollments.store');

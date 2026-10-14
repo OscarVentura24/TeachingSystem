@@ -15,6 +15,10 @@ class EnrollmentController extends Controller
      */
     public function store(Request $request, Course $course): RedirectResponse
     {
+        if ($course->isReadOnly()) {
+            abort(403, 'No se pueden matricular estudiantes en un curso archivado o perteneciente a un período escolar cerrado.');
+        }
+
         $validated = $request->validate([
             'student_id' => ['required', 'exists:students,id'],
             'preferred_workstation' => ['nullable', 'string', 'max:50'],
@@ -45,6 +49,10 @@ class EnrollmentController extends Controller
      */
     public function createAndEnroll(Request $request, Course $course): RedirectResponse
     {
+        if ($course->isReadOnly()) {
+            abort(403, 'No se pueden matricular estudiantes en un curso archivado o perteneciente a un período escolar cerrado.');
+        }
+
         $validated = $request->validate([
             'first_name' => ['required', 'string', 'max:100'],
             'last_name' => ['required', 'string', 'max:100'],
