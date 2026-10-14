@@ -67,15 +67,28 @@ class AcademicPeriodRolloverService
                     ->update(['is_current' => false]);
             }
 
-            // 1. Create the new Academic Period
-            $newPeriod = AcademicPeriod::create([
-                'institution_id' => $sourcePeriod->institution_id,
-                'name' => $newPeriodData['name'],
-                'start_date' => $newPeriodData['start_date'] ?? null,
-                'end_date' => $newPeriodData['end_date'] ?? null,
-                'is_current' => $isCurrent,
-                'is_closed' => false,
-            ]);
+            // 1. Create or adopt existing Academic Period
+            $newPeriod = AcademicPeriod::firstOrCreate(
+                [
+                    'institution_id' => $sourcePeriod->institution_id,
+                    'name' => $newPeriodData['name'],
+                ],
+                [
+                    'start_date' => $newPeriodData['start_date'] ?? null,
+                    'end_date' => $newPeriodData['end_date'] ?? null,
+                    'is_current' => $isCurrent,
+                    'is_closed' => false,
+                ]
+            );
+
+            if (! $newPeriod->wasRecentlyCreated) {
+                $newPeriod->update(array_filter([
+                    'start_date' => $newPeriodData['start_date'] ?? null,
+                    'end_date' => $newPeriodData['end_date'] ?? null,
+                    'is_current' => $isCurrent,
+                    'is_closed' => false,
+                ], fn ($val) => ! is_null($val)));
+            }
 
             // 2. Close source period if requested
             if ($options['close_source_period'] ?? true) {
