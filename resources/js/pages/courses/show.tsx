@@ -522,7 +522,7 @@ export default function CourseShow({
 
                     <div className="flex items-center gap-3">
                         {/* Student Promotion Button */}
-                        {course.students.length > 0 && availableTargetCourses.length > 0 && (
+                        {course.students.length > 0 && (availableTargetCourses.length > 0 || !isReadOnly) && (
                             <Button
                                 variant="outline"
                                 className="gap-2 border-primary/40 text-primary hover:bg-primary/5 shadow-xs"
@@ -1259,7 +1259,7 @@ export default function CourseShow({
                             </div>
 
                             <div className="flex items-center gap-2">
-                                {course.students.length > 0 && availableTargetCourses.length > 0 && (
+                                {course.students.length > 0 && (availableTargetCourses.length > 0 || !isReadOnly) && (
                                     <Button
                                         size="sm"
                                         variant="outline"

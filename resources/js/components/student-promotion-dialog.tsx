@@ -65,7 +65,8 @@ interface Props {
         id: number;
         name: string;
         section?: string;
-        academic_period?: { id: number; name: string };
+        is_read_only?: boolean;
+        academic_period?: { id: number; name: string; is_closed?: boolean };
         institution: { id: number; name: string };
     };
     students: EnrolledStudent[];
@@ -85,6 +86,31 @@ export function StudentPromotionDialog({
     const [defaultRepeatCourseId, setDefaultRepeatCourseId] = useState<number | ''>('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    const isSourceReadOnly = Boolean(course.is_read_only || course.academic_period?.is_closed);
+
+    // Available target courses including "Permanecer en este curso" if active
+    const targetCourseOptions = useMemo<TargetCourseOption[]>(() => {
+        const list: TargetCourseOption[] = [];
+
+        // If source course is active and open, offer "Permanecer en este curso"
+        if (!isSourceReadOnly) {
+            list.push({
+                id: course.id,
+                name: `📌 Permanecer en este curso (${course.name}${course.section ? ` ${course.section}` : ''})`,
+                section: course.section,
+                academic_period: course.academic_period,
+            });
+        }
+
+        availableTargetCourses.forEach((tc) => {
+            if (tc.id !== course.id) {
+                list.push(tc);
+            }
+        });
+
+        return list;
+    }, [isSourceReadOnly, course, availableTargetCourses]);
+
     // Initial promotions state map: student_id -> promotion config
     const [promotions, setPromotions] = useState<Record<number, StudentPromotionItem>>({});
 
@@ -101,8 +127,39 @@ export function StudentPromotionDialog({
                 };
             });
             setPromotions(initial);
+
+            // Auto-detect sensible defaults for promote and repeat:
+            if (!isSourceReadOnly) {
+                // If active course, repeating students naturally stay in this course!
+                setDefaultRepeatCourseId(course.id);
+            } else {
+                // If closed course, look for a course in targetCourseOptions with matching name/grade
+                const matchingLevelCourse = availableTargetCourses.find(
+                    (tc) => tc.name.trim().toLowerCase() === course.name.trim().toLowerCase()
+                );
+                if (matchingLevelCourse) {
+                    setDefaultRepeatCourseId(matchingLevelCourse.id);
+                } else {
+                    setDefaultRepeatCourseId('');
+                }
+            }
+
+            // For promoted students, look for a course with a different/higher level
+            const nextLevelCourse = availableTargetCourses.find(
+                (tc) => tc.id !== course.id && tc.name.trim().toLowerCase() !== course.name.trim().toLowerCase()
+            );
+            if (nextLevelCourse) {
+                setDefaultPromoteCourseId(nextLevelCourse.id);
+            } else {
+                const firstOther = availableTargetCourses.find((tc) => tc.id !== course.id);
+                if (firstOther) {
+                    setDefaultPromoteCourseId(firstOther.id);
+                } else {
+                    setDefaultPromoteCourseId('');
+                }
+            }
         }
-    }, [open, students]);
+    }, [open, students, isSourceReadOnly, course, availableTargetCourses]);
 
     // Filter students by name or id number
     const filteredStudents = useMemo(() => {
@@ -133,13 +190,17 @@ export function StudentPromotionDialog({
 
     // Quick preset: Mark all as Repeaters
     const handleSetAllRepeaters = () => {
+        const repeatTargetId = defaultRepeatCourseId
+            ? Number(defaultRepeatCourseId)
+            : (!isSourceReadOnly ? course.id : null);
+
         setPromotions((prev) => {
             const updated = { ...prev };
             students.forEach((s) => {
                 updated[s.id] = {
                     ...updated[s.id],
                     action: 'repeat',
-                    target_course_id: defaultRepeatCourseId ? Number(defaultRepeatCourseId) : updated[s.id]?.target_course_id || null,
+                    target_course_id: repeatTargetId,
                 };
             });
             return updated;
@@ -173,8 +234,14 @@ export function StudentPromotionDialog({
 
             if (action === 'promote' && defaultPromoteCourseId) {
                 targetCourse = Number(defaultPromoteCourseId);
-            } else if (action === 'repeat' && defaultRepeatCourseId) {
-                targetCourse = Number(defaultRepeatCourseId);
+            } else if (action === 'repeat') {
+                if (defaultRepeatCourseId) {
+                    targetCourse = Number(defaultRepeatCourseId);
+                } else if (!isSourceReadOnly) {
+                    targetCourse = course.id;
+                } else {
+                    targetCourse = null;
+                }
             } else if (action === 'withdraw' || action === 'none') {
                 targetCourse = null;
             }
@@ -325,12 +392,12 @@ export function StudentPromotionDialog({
                     </div>
                 </DialogHeader>
 
-                {availableTargetCourses.length === 0 ? (
+                {targetCourseOptions.length === 0 ? (
                     <div className="py-8 text-center space-y-3">
                         <AlertCircle className="mx-auto h-10 w-10 text-amber-500/80" />
                         <h4 className="font-semibold text-sm text-foreground">No hay cursos de destino disponibles en períodos activos</h4>
                         <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                            Para poder promover o repetir estudiantes, primero debes tener creados los cursos en el nuevo período académico abierto (ej: 4to Curso en 2027-2028).
+                            Para poder promover o transferir estudiantes, primero debes tener creados los cursos en el nuevo período académico abierto (ej: 4to Curso en 2027-2028).
                         </p>
                     </div>
                 ) : (
@@ -383,11 +450,13 @@ export function StudentPromotionDialog({
                                         className="w-full h-8 rounded-lg border bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                                     >
                                         <option value="">Seleccionar curso del siguiente nivel...</option>
-                                        {availableTargetCourses.map((tc) => (
-                                            <option key={tc.id} value={tc.id}>
-                                                {tc.name} {tc.section ? `(${tc.section})` : ''} — {tc.academic_period?.name ?? 'Sin período'}
-                                            </option>
-                                        ))}
+                                        {targetCourseOptions
+                                            .filter((tc) => tc.id !== course.id)
+                                            .map((tc) => (
+                                                <option key={tc.id} value={tc.id}>
+                                                    {tc.name} {tc.section ? `(${tc.section})` : ''} — {tc.academic_period?.name ?? 'Período activo'}
+                                                </option>
+                                            ))}
                                     </select>
                                 </div>
 
@@ -401,9 +470,11 @@ export function StudentPromotionDialog({
                                         className="w-full h-8 rounded-lg border bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                                     >
                                         <option value="">Seleccionar curso del mismo nivel en nuevo ciclo...</option>
-                                        {availableTargetCourses.map((tc) => (
+                                        {targetCourseOptions.map((tc) => (
                                             <option key={tc.id} value={tc.id}>
-                                                {tc.name} {tc.section ? `(${tc.section})` : ''} — {tc.academic_period?.name ?? 'Sin período'}
+                                                {tc.id === course.id
+                                                    ? tc.name
+                                                    : `${tc.name} ${tc.section ? `(${tc.section})` : ''} — ${tc.academic_period?.name ?? 'Período activo'}`}
                                             </option>
                                         ))}
                                     </select>
@@ -548,11 +619,15 @@ export function StudentPromotionDialog({
                                                                     }`}
                                                                 >
                                                                     <option value="">-- Seleccionar curso destino * --</option>
-                                                                    {availableTargetCourses.map((tc) => (
-                                                                        <option key={tc.id} value={tc.id}>
-                                                                            {tc.name} {tc.section ? `(${tc.section})` : ''} ({tc.academic_period?.name ?? 'Período'})
-                                                                        </option>
-                                                                    ))}
+                                                                    {targetCourseOptions
+                                                                        .filter((tc) => item.action !== 'promote' || tc.id !== course.id)
+                                                                        .map((tc) => (
+                                                                            <option key={tc.id} value={tc.id}>
+                                                                                {tc.id === course.id
+                                                                                    ? tc.name
+                                                                                    : `${tc.name} ${tc.section ? `(${tc.section})` : ''} (${tc.academic_period?.name ?? 'Período'})`}
+                                                                            </option>
+                                                                        ))}
                                                                 </select>
                                                                 {!item.target_course_id && (
                                                                     <span className="text-[10px] text-destructive block">

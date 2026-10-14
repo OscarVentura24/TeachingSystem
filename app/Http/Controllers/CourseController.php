@@ -203,7 +203,6 @@ class CourseController extends Controller
 
         // Active target courses for student promotion / transfers
         $availableTargetCourses = Course::where('institution_id', $course->institution_id)
-            ->where('id', '!=', $course->id)
             ->where('status', '!=', 'archived')
             ->where(function ($q) {
                 $q->whereNull('academic_period_id')

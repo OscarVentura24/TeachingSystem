@@ -214,3 +214,63 @@ test('promotion is rejected if target course is in a closed period', function ()
 
     $response->assertSessionHasErrors(['promotions']);
 });
+
+test('repeating student can stay in the same course when source course is active', function () {
+    $studentPromoted = Student::create([
+        'institution_id' => $this->institution->id,
+        'first_name' => 'Carlos',
+        'last_name' => 'Almonte',
+        'matricula' => 'MAT-010',
+        'is_active' => true,
+    ]);
+
+    $studentRepeater = Student::create([
+        'institution_id' => $this->institution->id,
+        'first_name' => 'Daniel',
+        'last_name' => 'Báez',
+        'matricula' => 'MAT-011',
+        'is_active' => true,
+    ]);
+
+    // Both enrolled in active courseNext (4to Curso A)
+    $this->courseNext->students()->attach($studentPromoted->id, ['status' => 'active']);
+    $this->courseNext->students()->attach($studentRepeater->id, ['status' => 'active']);
+
+    $response = $this->actingAs($this->admin)
+        ->post(route('courses.students.promote', $this->courseNext), [
+            'promotions' => [
+                [
+                    'student_id' => $studentPromoted->id,
+                    'action' => 'promote',
+                    'target_course_id' => $this->courseSameLevel->id,
+                ],
+                [
+                    'student_id' => $studentRepeater->id,
+                    'action' => 'repeat',
+                    'target_course_id' => $this->courseNext->id, // Staying in same course!
+                ],
+            ],
+        ]);
+
+    $response->assertRedirect();
+    $response->assertSessionHas('success');
+
+    // Carlos is promoted out
+    $carlosPivot = $this->courseNext->students()->where('student_id', $studentPromoted->id)->first()->pivot;
+    expect($carlosPivot->status)->toBe('promoted');
+
+    // Daniel is repeating in same course
+    $danielPivot = $this->courseNext->students()->where('student_id', $studentRepeater->id)->first()->pivot;
+    expect($danielPivot->status)->toBe('repeated');
+
+    // When creating a new session, only Daniel appears, Carlos is excluded
+    $sessionCreateResponse = $this->actingAs($this->admin)
+        ->get(route('courses.sessions.create', $this->courseNext));
+
+    $sessionCreateResponse->assertOk();
+    $studentsInSession = $sessionCreateResponse->viewData('page')['props']['students'];
+
+    expect(collect($studentsInSession)->pluck('id')->all())->toContain($studentRepeater->id);
+    expect(collect($studentsInSession)->pluck('id')->all())->not()->toContain($studentPromoted->id);
+});
+

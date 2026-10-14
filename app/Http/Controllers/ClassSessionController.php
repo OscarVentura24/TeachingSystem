@@ -111,7 +111,8 @@ class ClassSessionController extends Controller
 
         $course->load([
             'students' => function ($query) {
-                $query->orderBy('last_name')->orderBy('first_name');
+                $query->wherePivotIn('status', ['active', 'repeated'])
+                    ->orderBy('last_name')->orderBy('first_name');
             },
             'courseTopics' => function ($query) {
                 $query->whereNull('parent_id')
@@ -261,8 +262,11 @@ class ClassSessionController extends Controller
         }
 
         $course->load([
-            'students' => function ($query) {
-                $query->orderBy('last_name')->orderBy('first_name');
+            'students' => function ($query) use ($session) {
+                $query->where(function ($sub) use ($session) {
+                    $sub->wherePivotIn('status', ['active', 'repeated'])
+                        ->orWhereIn('students.id', $session->attendances()->pluck('student_id'));
+                })->orderBy('last_name')->orderBy('first_name');
             },
             'courseTopics' => function ($query) {
                 $query->whereNull('parent_id')

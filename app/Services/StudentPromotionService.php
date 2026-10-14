@@ -58,6 +58,14 @@ class StudentPromotionService
                 }
 
                 if ($action === 'promote' || $action === 'repeat') {
+                    // If repeater and target course is omitted on an active course, default to staying in same course
+                    if ($action === 'repeat' && !$targetCourseId) {
+                        if ($sourceCourse->isReadOnly()) {
+                            throw new InvalidArgumentException("Se requiere un curso de destino para el estudiante repitente {$student->full_name} porque el período del curso actual está cerrado.");
+                        }
+                        $targetCourseId = $sourceCourse->id;
+                    }
+
                     if (!$targetCourseId) {
                         throw new InvalidArgumentException("Se requiere un curso de destino para la acción '{$action}' del estudiante {$student->full_name}.");
                     }
@@ -75,32 +83,38 @@ class StudentPromotionService
                         throw new InvalidArgumentException("No se puede matricular estudiantes en un curso de un período cerrado o archivado.");
                     }
 
-                    // 1. Update source enrollment
-                    $newSourceStatus = $action === 'promote' ? 'promoted' : 'repeated';
-                    $sourceEnrollment->update(['status' => $newSourceStatus]);
+                    if ($targetCourseId === $sourceCourse->id) {
+                        // Staying in the same course as a repeater
+                        $sourceEnrollment->update(['status' => 'repeated']);
+                        $summary['repeated']++;
+                    } else {
+                        // 1. Update source enrollment
+                        $newSourceStatus = $action === 'promote' ? 'promoted' : 'repeated';
+                        $sourceEnrollment->update(['status' => $newSourceStatus]);
 
-                    // 2. Enroll student into target course
-                    Enrollment::updateOrCreate(
-                        [
-                            'course_id' => $targetCourse->id,
-                            'student_id' => $studentId,
-                        ],
-                        [
-                            'status' => 'active',
-                            'preferred_workstation' => $sourceEnrollment->preferred_workstation,
-                            'enrolled_at' => now(),
-                        ]
-                    );
+                        // 2. Enroll student into target course
+                        Enrollment::updateOrCreate(
+                            [
+                                'course_id' => $targetCourse->id,
+                                'student_id' => $studentId,
+                            ],
+                            [
+                                'status' => 'active',
+                                'preferred_workstation' => $sourceEnrollment->preferred_workstation,
+                                'enrolled_at' => now(),
+                            ]
+                        );
+
+                        if ($action === 'promote') {
+                            $summary['promoted']++;
+                        } else {
+                            $summary['repeated']++;
+                        }
+                    }
 
                     // Ensure student is active in institution
                     if (!$student->is_active) {
                         $student->update(['is_active' => true]);
-                    }
-
-                    if ($action === 'promote') {
-                        $summary['promoted']++;
-                    } else {
-                        $summary['repeated']++;
                     }
                 } elseif ($action === 'withdraw') {
                     // Update source enrollment to withdrawn
