@@ -27,6 +27,8 @@ interface AcademicPeriod {
     name: string;
     is_current?: boolean;
     is_closed?: boolean;
+    start_date?: string;
+    end_date?: string;
 }
 
 interface CourseItem {
@@ -43,6 +45,7 @@ interface Props {
     onOpenChange: (open: boolean) => void;
     currentPeriod: AcademicPeriod | null;
     courses: CourseItem[];
+    academicPeriods?: AcademicPeriod[];
 }
 
 export function AcademicPeriodRolloverDialog({
@@ -50,10 +53,15 @@ export function AcademicPeriodRolloverDialog({
     onOpenChange,
     currentPeriod,
     courses,
+    academicPeriods = [],
 }: Props) {
     const periodCourses = currentPeriod
         ? courses.filter((c) => c.academic_period_id === currentPeriod.id)
         : courses;
+
+    const plannedPeriods = academicPeriods.filter(
+        (p) => !p.is_closed && !p.is_current && p.id !== currentPeriod?.id
+    );
 
     const { data, setData, post, processing, errors, reset } = useForm({
         new_period_name: '',
@@ -64,6 +72,30 @@ export function AcademicPeriodRolloverDialog({
         clone_course_ids: [] as number[],
         promote_students: false,
     });
+
+    const handleSelectExistingPeriod = (period: AcademicPeriod) => {
+        const extractDatePart = (d?: string | null) => {
+            if (!d) return '';
+            return d.includes('T') ? d.split('T')[0] : d;
+        };
+        setData((prev) => ({
+            ...prev,
+            new_period_name: period.name,
+            start_date: extractDatePart(period.start_date) || prev.start_date,
+            end_date: extractDatePart(period.end_date) || prev.end_date,
+        }));
+    };
+
+    const matchedPeriod = plannedPeriods.find(
+        (p) => p.name.trim().toLowerCase() === data.new_period_name.trim().toLowerCase()
+    );
+
+    const matchingSuggestions = plannedPeriods.filter(
+        (p) =>
+            data.new_period_name.trim() !== '' &&
+            p.name.toLowerCase().includes(data.new_period_name.trim().toLowerCase()) &&
+            p.name.toLowerCase() !== data.new_period_name.trim().toLowerCase()
+    );
 
     // Initialize all courses selected by default when opened
     useEffect(() => {
@@ -136,16 +168,83 @@ export function AcademicPeriodRolloverDialog({
                                 </span>
                             </div>
 
+                            {/* Planned Periods Quick Selector */}
+                            {plannedPeriods.length > 0 && (
+                                <div className="bg-sky-500/10 border border-sky-500/20 rounded-lg p-2.5 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[11px] font-semibold text-sky-950 dark:text-sky-200 flex items-center gap-1.5">
+                                            <Calendar className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+                                            Períodos planificados detectados:
+                                        </span>
+                                        <span className="text-[10px] text-sky-700 dark:text-sky-300">
+                                            Haz clic para autocompletar
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {plannedPeriods.map((period) => {
+                                            const isSelected =
+                                                data.new_period_name.trim().toLowerCase() ===
+                                                period.name.trim().toLowerCase();
+                                            return (
+                                                <button
+                                                    key={period.id}
+                                                    type="button"
+                                                    onClick={() => handleSelectExistingPeriod(period)}
+                                                    className={`text-xs px-2.5 py-1 rounded-md border font-medium transition-all flex items-center gap-1.5 ${
+                                                        isSelected
+                                                            ? 'bg-sky-600 text-white border-sky-600 shadow-xs'
+                                                            : 'bg-background hover:bg-sky-100 dark:hover:bg-sky-950/60 text-foreground border-sky-300 dark:border-sky-800'
+                                                    }`}
+                                                >
+                                                    <span>{period.name}</span>
+                                                    {isSelected && <CheckCircle2 className="h-3.5 w-3.5" />}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="space-y-1.5">
                                 <Label htmlFor="new_period_name">Nombre del Nuevo Período Escolar *</Label>
                                 <Input
                                     id="new_period_name"
-                                    placeholder="Ej: Año Escolar 2027 o Semestre 2026-II"
+                                    list="planned_periods_datalist"
+                                    placeholder="Ej: 2027-2028 o Año Escolar 2027-2028"
                                     value={data.new_period_name}
                                     onChange={(e) => setData('new_period_name', e.target.value)}
                                     required
                                     autoFocus
                                 />
+                                <datalist id="planned_periods_datalist">
+                                    {plannedPeriods.map((period) => (
+                                        <option key={period.id} value={period.name} />
+                                    ))}
+                                </datalist>
+
+                                {matchedPeriod && (
+                                    <p className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1 font-medium bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded">
+                                        <CheckCircle2 className="h-3 w-3 shrink-0" />
+                                        Se adoptará el período existente "{matchedPeriod.name}" y se activará como el nuevo año lectivo.
+                                    </p>
+                                )}
+
+                                {!matchedPeriod && matchingSuggestions.length > 0 && (
+                                    <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap pt-0.5">
+                                        <span>¿Quisiste decir?</span>
+                                        {matchingSuggestions.map((suggestion) => (
+                                            <button
+                                                key={suggestion.id}
+                                                type="button"
+                                                onClick={() => handleSelectExistingPeriod(suggestion)}
+                                                className="font-medium text-sky-600 hover:text-sky-800 underline inline-flex items-center gap-0.5"
+                                            >
+                                                {suggestion.name}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
                                 {errors.new_period_name && (
                                     <p className="text-destructive text-[11px]">{errors.new_period_name}</p>
                                 )}

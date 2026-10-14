@@ -1175,6 +1175,7 @@ export default function CoursesIndex({
                     onOpenChange={setOpenRolloverDialog}
                     currentPeriod={currentPeriodInSystem}
                     courses={courses}
+                    academicPeriods={academicPeriods}
                 />
 
                 {/* Custom Confirmation Dialog */}
