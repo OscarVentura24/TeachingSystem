@@ -247,3 +247,28 @@ test('teacher can view the assessment edit page', function () {
     );
 });
 
+test('teacher can view the assessment grade page', function () {
+    $assessment = Assessment::create([
+        'course_id' => $this->course->id,
+        'created_by_user_id' => $this->user->id,
+        'title' => 'Práctica 1',
+        'assessment_type' => 'practical',
+        'assessment_date' => '2026-10-18',
+        'max_score' => 100,
+        'passing_score' => 70,
+    ]);
+    $assessment->topics()->attach($this->topic->id);
+
+    $response = $this->actingAs($this->user)->get("/courses/{$this->course->id}/assessments/{$assessment->id}/grade");
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->component('assessments/grade')
+        ->has('course')
+        ->has('assessment')
+        ->has('students')
+        ->where('readOnly', false)
+    );
+});
+
+

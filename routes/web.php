@@ -33,6 +33,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/courses/{course}/assessments', [AssessmentController::class, 'store'])->name('courses.assessments.store');
     Route::get('/courses/{course}/assessments/{assessment}/edit', [AssessmentController::class, 'edit'])->name('courses.assessments.edit');
     Route::put('/courses/{course}/assessments/{assessment}', [AssessmentController::class, 'update'])->name('courses.assessments.update');
+    Route::get('/courses/{course}/assessments/{assessment}/grade', [AssessmentController::class, 'grade'])->name('courses.assessments.grade');
     Route::delete('/courses/{course}/assessments/{assessment}', [AssessmentController::class, 'destroy'])->name('courses.assessments.destroy');
     Route::post('/courses/{course}/assessments/{assessment}/scores', [AssessmentController::class, 'saveScores'])->name('courses.assessments.scores');
     Route::delete('/courses/{course}/students/{student}', [CourseController::class, 'removeStudent'])->name('courses.students.remove');

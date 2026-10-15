@@ -78,62 +78,7 @@ interface Props {
 export function CourseAssessments({ courseId, assessments, students, courseTopics, readOnly = false }: Props) {
     const [viewMode, setViewMode] = useState<'gradebook' | 'list'>('gradebook');
     const [searchStudent, setSearchStudent] = useState('');
-    const [openGradingDialog, setOpenGradingDialog] = useState(false);
-    const [gradingAssessment, setGradingAssessment] = useState<Assessment | null>(null);
     const [deleteAssessmentConfirm, setDeleteAssessmentConfirm] = useState<Assessment | null>(null);
-
-    // Form for grading
-    const [gradingScores, setGradingScores] = useState<Record<number, { score: string; status: 'present' | 'absent' | 'excused'; feedback: string }>>({});
-    const [isSavingScores, setIsSavingScores] = useState(false);
-
-    // Open grading dialog
-    const handleOpenGrading = (assessment: Assessment) => {
-        setGradingAssessment(assessment);
-        const initial: Record<number, { score: string; status: 'present' | 'absent' | 'excused'; feedback: string }> = {};
-
-        const existingScoresMap = new Map<number, AssessmentScore>();
-        if (assessment.scores) {
-            assessment.scores.forEach((s) => existingScoresMap.set(s.student_id, s));
-        }
-
-        students.forEach((st) => {
-            const ex = existingScoresMap.get(st.id);
-            initial[st.id] = {
-                score: ex && ex.score !== null ? String(ex.score) : '',
-                status: ex ? ex.status : 'present',
-                feedback: ex?.feedback || '',
-            };
-        });
-
-        setGradingScores(initial);
-        setOpenGradingDialog(true);
-    };
-
-    // Submit scores
-    const handleSaveScores = () => {
-        if (!gradingAssessment) return;
-        setIsSavingScores(true);
-
-        const payload = Object.entries(gradingScores).map(([studentIdStr, val]) => ({
-            student_id: Number(studentIdStr),
-            score: val.status === 'present' && val.score !== '' ? Number(val.score) : null,
-            status: val.status,
-            feedback: val.feedback || null,
-        }));
-
-        router.post(
-            `/courses/${courseId}/assessments/${gradingAssessment.id}/scores`,
-            { scores: payload },
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    setIsSavingScores(false);
-                    setOpenGradingDialog(false);
-                },
-                onError: () => setIsSavingScores(false),
-            }
-        );
-    };
 
     // Delete assessment
     const handleDeleteAssessment = () => {
@@ -341,13 +286,12 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
                                                         <span className="bg-muted px-1 rounded">({Number(ass.weight_percentage)}%)</span>
                                                     )}
                                                 </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleOpenGrading(ass)}
-                                                    className="mt-1 text-[10px] text-primary hover:underline font-medium block mx-auto"
+                                                <Link
+                                                    href={`/courses/${courseId}/assessments/${ass.id}/grade`}
+                                                    className="mt-1 text-[10px] text-primary hover:underline font-medium block mx-auto text-center"
                                                 >
                                                     {readOnly ? 'Ver notas' : 'Calificar'}
-                                                </button>
+                                                </Link>
                                             </th>
                                         ))}
                                         <th className="px-3 py-3 text-center min-w-[100px] font-semibold text-foreground">
@@ -554,13 +498,14 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
                                             <span className="text-xs text-muted-foreground">
                                                 Calificados: <strong className="text-foreground">{gradedCount}/{students.length}</strong>
                                             </span>
-                                            <Button
-                                                size="sm"
-                                                onClick={() => handleOpenGrading(ass)}
-                                                className="text-xs gap-1.5"
-                                            >
-                                                <Check className="h-3.5 w-3.5" /> {readOnly ? 'Ver Calificaciones' : 'Ingresar Calificaciones'}
-                                            </Button>
+                                            <Link href={`/courses/${courseId}/assessments/${ass.id}/grade`}>
+                                                <Button
+                                                    size="sm"
+                                                    className="text-xs gap-1.5"
+                                                >
+                                                    <Check className="h-3.5 w-3.5" /> {readOnly ? 'Ver Calificaciones' : 'Ingresar Calificaciones'}
+                                                </Button>
+                                            </Link>
                                         </div>
                                     </div>
                                 );
@@ -569,158 +514,6 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
                     )}
                 </div>
             )}
-
-            {/* Modal: Bulk Grading Dialog */}
-            <Dialog open={openGradingDialog} onOpenChange={setOpenGradingDialog}>
-                <DialogContent className="max-w-3xl">
-                    <DialogHeader>
-                        <DialogTitle className="text-base font-semibold">
-                            {readOnly ? 'Consultar Calificaciones: ' : 'Calificar: '} {gradingAssessment?.title}
-                        </DialogTitle>
-                        <DialogDescription className="text-xs">
-                            Escala de calificación: 0 a {gradingAssessment ? Number(gradingAssessment.max_score) : 100} pts (Aprobatoria: &ge; {gradingAssessment ? Number(gradingAssessment.passing_score) : 70}).
-                            {readOnly && ' (Modo de solo lectura)'}
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="max-h-[440px] overflow-y-auto space-y-2 py-3">
-                        {students.length === 0 ? (
-                            <p className="text-xs text-muted-foreground text-center py-4">No hay estudiantes matriculados en este curso.</p>
-                        ) : (
-                            <table className="w-full text-left text-xs border-collapse">
-                                <thead className="sticky top-0 bg-muted/95 border-b z-10">
-                                    <tr>
-                                        <th className="px-3 py-2 font-semibold">Estudiante</th>
-                                        <th className="px-3 py-2 font-semibold w-28">Estado</th>
-                                        <th className="px-3 py-2 font-semibold w-28 text-center">Calificación</th>
-                                        <th className="px-3 py-2 font-semibold w-28 text-center">Impacto</th>
-                                        <th className="px-3 py-2 font-semibold">Feedback / Observaciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-border">
-                                    {students.map((st) => {
-                                        const row = gradingScores[st.id] || { score: '', status: 'present', feedback: '' };
-                                        const numScore = row.score !== '' ? Number(row.score) : null;
-                                        const maxScore = gradingAssessment ? Number(gradingAssessment.max_score) : 100;
-                                        const passingScore = gradingAssessment ? Number(gradingAssessment.passing_score) : 70;
-
-                                        const isPassing = numScore !== null && numScore >= passingScore;
-                                        const isMastered = numScore !== null && (numScore / maxScore) * 100 >= 85;
-
-                                        return (
-                                            <tr key={st.id} className="hover:bg-muted/20">
-                                                <td className="px-3 py-2 font-medium">
-                                                    <span>{st.last_name}, {st.first_name}</span>
-                                                    {st.student_id_number && (
-                                                        <span className="text-[10px] text-muted-foreground font-mono block">
-                                                            {st.student_id_number}
-                                                        </span>
-                                                    )}
-                                                </td>
-
-                                                {/* Status Selector */}
-                                                <td className="px-3 py-2">
-                                                    <select
-                                                        value={row.status}
-                                                        disabled={readOnly}
-                                                        onChange={(e) =>
-                                                            setGradingScores({
-                                                                ...gradingScores,
-                                                                [st.id]: { ...row, status: e.target.value as any },
-                                                            })
-                                                        }
-                                                        className="w-full px-2 py-1 rounded border bg-background text-[11px] disabled:opacity-75 disabled:cursor-not-allowed"
-                                                    >
-                                                        <option value="present">Presente</option>
-                                                        <option value="absent">Ausente</option>
-                                                        <option value="excused">Justificado</option>
-                                                    </select>
-                                                </td>
-
-                                                {/* Numeric Score Input */}
-                                                <td className="px-3 py-2 text-center">
-                                                    <input
-                                                        type="number"
-                                                        step="0.5"
-                                                        min="0"
-                                                        max={maxScore}
-                                                        disabled={readOnly || row.status !== 'present'}
-                                                        placeholder="0"
-                                                        value={row.score}
-                                                        onChange={(e) =>
-                                                            setGradingScores({
-                                                                ...gradingScores,
-                                                                [st.id]: { ...row, score: e.target.value },
-                                                            })
-                                                        }
-                                                        className="w-20 px-2 py-1 text-xs text-center font-mono font-bold rounded border bg-background focus:ring-1 focus:ring-primary disabled:opacity-75 disabled:cursor-not-allowed"
-                                                    />
-                                                </td>
-
-                                                {/* Impact Indicator */}
-                                                <td className="px-3 py-2 text-center">
-                                                    {row.status !== 'present' ? (
-                                                        <span className="text-[10px] text-muted-foreground">N/A</span>
-                                                    ) : numScore === null ? (
-                                                        <span className="text-[10px] text-muted-foreground/60">Sin nota</span>
-                                                    ) : isMastered ? (
-                                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 px-1.5 py-0.5 rounded">
-                                                            <CheckCircle2 className="h-3 w-3" /> Dominado
-                                                        </span>
-                                                    ) : isPassing ? (
-                                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
-                                                            <Check className="h-3 w-3" /> Aprobado
-                                                        </span>
-                                                    ) : (
-                                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/15 px-1.5 py-0.5 rounded">
-                                                            <AlertTriangle className="h-3 w-3" /> Refuerzo
-                                                        </span>
-                                                    )}
-                                                </td>
-
-                                                {/* Feedback Input */}
-                                                <td className="px-3 py-2">
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Nota u observación..."
-                                                        disabled={readOnly}
-                                                        value={row.feedback}
-                                                        onChange={(e) =>
-                                                            setGradingScores({
-                                                                ...gradingScores,
-                                                                [st.id]: { ...row, feedback: e.target.value },
-                                                            })
-                                                        }
-                                                        className="w-full px-2 py-1 text-[11px] rounded border bg-background disabled:opacity-75 disabled:cursor-not-allowed"
-                                                    />
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        )}
-                    </div>
-
-                    <DialogFooter>
-                        {readOnly ? (
-                            <Button type="button" size="sm" onClick={() => setOpenGradingDialog(false)}>
-                                Cerrar
-                            </Button>
-                        ) : (
-                            <>
-                                <Button type="button" variant="outline" size="sm" onClick={() => setOpenGradingDialog(false)}>
-                                    Cancelar
-                                </Button>
-                                <Button type="button" size="sm" onClick={handleSaveScores} disabled={isSavingScores}>
-                                    {isSavingScores ? 'Guardando...' : 'Guardar Calificaciones'}
-                                </Button>
-                            </>
-                        )}
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
             {/* Modal: Delete Confirmation */}
             <Dialog open={!!deleteAssessmentConfirm} onOpenChange={(open) => !open && setDeleteAssessmentConfirm(null)}>
                 <DialogContent className="max-w-sm">

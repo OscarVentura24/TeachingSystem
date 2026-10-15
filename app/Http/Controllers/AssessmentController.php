@@ -230,6 +230,44 @@ class AssessmentController extends Controller
     }
 
     /**
+     * Show dedicated page to grade an assessment.
+     */
+    public function grade(Request $request, Course $course, Assessment $assessment): Response
+    {
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para gestionar evaluaciones en este curso.');
+        }
+
+        if ($assessment->course_id !== $course->id) {
+            abort(404);
+        }
+
+        $course->load([
+            'institution:id,name',
+            'academicPeriod:id,name,is_current,is_closed',
+        ]);
+
+        $assessment->load([
+            'topics:id,title,unit_title',
+            'scores',
+            'createdBy:id,name',
+        ]);
+
+        $studentsQuery = $course->students();
+        if (!$course->isReadOnly()) {
+            $studentsQuery->wherePivotIn('status', ['active', 'repeated']);
+        }
+        $students = $studentsQuery->orderBy('last_name')->orderBy('first_name')->get();
+
+        return Inertia::render('assessments/grade', [
+            'course' => $course,
+            'assessment' => $assessment,
+            'students' => $students,
+            'readOnly' => $course->isReadOnly(),
+        ]);
+    }
+
+    /**
      * Save student scores for an assessment.
      */
     public function saveScores(Request $request, Course $course, Assessment $assessment): RedirectResponse
@@ -278,6 +316,7 @@ class AssessmentController extends Controller
             $this->syncService->syncForAssessment($assessment);
         });
 
-        return back()->with('success', 'Calificaciones registradas y sincronizadas exitosamente.');
+        return redirect()->route('courses.show', ['course' => $course->id, 'tab' => 'grades'])
+            ->with('success', 'Calificaciones registradas y sincronizadas exitosamente.');
     }
 }
