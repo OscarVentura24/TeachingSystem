@@ -15,13 +15,15 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Services\InstitutionContext;
+use App\Services\PensumDuplicationService;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class CourseController extends Controller
 {
     public function __construct(
-        protected InstitutionContext $contextService
+        protected InstitutionContext $contextService,
+        protected PensumDuplicationService $pensumDuplicationService,
     ) {}
 
     /**
@@ -209,6 +211,8 @@ class CourseController extends Controller
         $canManageTeachers = $request->user()->isInstitutionAdmin($course->institution_id) ||
             $course->teachers()->where('users.id', $request->user()->id)->wherePivot('is_primary', true)->exists();
 
+        $candidateSourceCourses = $this->pensumDuplicationService->getCandidateSourceCourses($course, $request->user());
+
         return Inertia::render('courses/show', [
             'course' => $course,
             'progressByStudent' => $progressRecords,
@@ -216,7 +220,45 @@ class CourseController extends Controller
             'availableTeachers' => $availableTeachers,
             'institutionStudents' => $institutionStudents,
             'canManageTeachers' => $canManageTeachers,
+            'candidateSourceCourses' => $candidateSourceCourses,
         ]);
+    }
+
+    /**
+     * Duplicate or merge pensum topics from another course intelligently.
+     */
+    public function clonePensum(Request $request, Course $course): RedirectResponse
+    {
+        $this->ensureCourseNotReadOnly($course);
+
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para modificar el pensum de este curso.');
+        }
+
+        $validated = $request->validate([
+            'source_course_id' => ['required', 'integer', 'exists:courses,id'],
+            'mode' => ['required', 'string', 'in:replace,merge,selected'],
+            'selected_topic_ids' => ['nullable', 'array'],
+            'selected_topic_ids.*' => ['integer', 'exists:course_topics,id'],
+        ]);
+
+        $sourceCourse = Course::findOrFail($validated['source_course_id']);
+
+        $result = $this->pensumDuplicationService->duplicatePensum(
+            $sourceCourse,
+            $course,
+            [
+                'mode' => $validated['mode'],
+                'selected_topic_ids' => $validated['selected_topic_ids'] ?? [],
+            ]
+        );
+
+        $msg = "Se importaron exitosamente {$result['total_imported']} temas y subtemas desde el pensum de '{$sourceCourse->name}'.";
+        if ($result['skipped_duplicates'] > 0) {
+            $msg .= " ({$result['skipped_duplicates']} temas omitidos por estar ya presentes).";
+        }
+
+        return back()->with('success', $msg);
     }
 
     /**

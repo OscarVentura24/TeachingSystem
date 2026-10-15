@@ -26,6 +26,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/courses/{course}/topics/{courseTopic}/sync', [CourseController::class, 'syncSingleTopic'])->name('courses.topics.sync-single');
     Route::delete('/courses/{course}/topics/{courseTopic}', [CourseController::class, 'removeTopic'])->name('courses.topics.remove');
     Route::post('/courses/{course}/topics/reorder', [CourseController::class, 'reorderTopics'])->name('courses.topics.reorder');
+    Route::post('/courses/{course}/clone-pensum', [CourseController::class, 'clonePensum'])->name('courses.pensum.clone');
     Route::post('/courses/{course}/progress', [CourseController::class, 'updateStudentProgress'])->name('courses.progress.update');
     Route::post('/courses/{course}/assessments', [AssessmentController::class, 'store'])->name('courses.assessments.store');
     Route::put('/courses/{course}/assessments/{assessment}', [AssessmentController::class, 'update'])->name('courses.assessments.update');
