@@ -19,29 +19,22 @@ RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoload
 # ==========================================
 # Stage 3: Production Runtime
 # ==========================================
-FROM php:8.4-fpm-alpine
+FROM php:8.3-fpm-alpine
 
 # Install system dependencies & Nginx
-RUN apk add --no-cache \
-    nginx \
-    postgresql-dev \
-    libzip-dev \
-    icu-dev \
-    oniguruma-dev \
-    libpng-dev \
-    libjpeg-turbo-dev \
-    freetype-dev \
-    curl \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) \
-        pdo_pgsql \
-        pgsql \
-        opcache \
-        intl \
-        zip \
-        bcmath \
-        mbstring \
-        gd
+RUN apk add --no-cache nginx curl bash
+
+# Install PHP extensions cleanly via official extension installer
+COPY --from=mlocati/php-extension-installer /usr/bin/install-php-extensions /usr/local/bin/
+RUN install-php-extensions \
+    pdo_pgsql \
+    pgsql \
+    opcache \
+    intl \
+    zip \
+    bcmath \
+    mbstring \
+    gd
 
 # Configure PHP for Production
 RUN { \
