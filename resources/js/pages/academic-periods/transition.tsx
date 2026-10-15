@@ -890,9 +890,14 @@ export default function AcademicPeriodTransition({
                                                                                 {idx + 1}
                                                                             </td>
                                                                             <td className="py-3 px-4">
-                                                                                <div className="font-semibold text-foreground">
+                                                                                <Link
+                                                                                    href={`/students/${student.id}`}
+                                                                                    target="_blank"
+                                                                                    className="font-semibold text-foreground hover:text-primary transition-colors hover:underline block"
+                                                                                    title="Ver ficha y trayecto del estudiante (abre en nueva pestaña)"
+                                                                                >
                                                                                     {student.last_name}, {student.first_name}
-                                                                                </div>
+                                                                                </Link>
                                                                                 {student.student_id_number && (
                                                                                     <span className="text-[10px] text-muted-foreground font-mono">
                                                                                         Matrícula: {student.student_id_number}

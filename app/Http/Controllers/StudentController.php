@@ -7,6 +7,7 @@ use App\Models\Institution;
 use App\Models\Student;
 use App\Services\InstitutionContext;
 use App\Services\MatriculaGeneratorService;
+use App\Services\StudentProfileService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,6 +19,7 @@ class StudentController extends Controller
     public function __construct(
         protected InstitutionContext $contextService,
         protected MatriculaGeneratorService $matriculaService,
+        protected StudentProfileService $profileService,
     ) {}
 
     /**
@@ -270,5 +272,48 @@ class StudentController extends Controller
         $student->delete();
 
         return back()->with('success', 'Estudiante retirado de la institución.');
+    }
+
+    /**
+     * Display the student's profile and academic trajectory (Ficha del Estudiante).
+     */
+    public function show(Request $request, Student $student): Response
+    {
+        $user = $request->user();
+        $activeInstitutionId = $this->contextService->getActiveInstitutionId($request);
+
+        $hasAccess = $user->isSuperAdmin() ||
+            $user->institutionMemberships()
+                ->where('institution_id', $student->institution_id)
+                ->where('is_active', true)
+                ->exists();
+
+        if (! $hasAccess) {
+            abort(403, 'No tienes permisos para ver la ficha de este estudiante.');
+        }
+
+        $canEdit = $user->isSuperAdmin() ||
+            ($student->institution_id === $activeInstitutionId &&
+             $user->institutionMemberships()
+                 ->where('institution_id', $student->institution_id)
+                 ->where('is_active', true)
+                 ->exists());
+
+        $canDelete = $user->isSuperAdmin() ||
+            ($student->institution_id === $activeInstitutionId &&
+             $user->isInstitutionAdmin($student->institution_id));
+
+        $data = $this->profileService->getStudentProfile($student);
+
+        return Inertia::render('students/show', [
+            'student' => $data['student'],
+            'metrics' => $data['metrics'],
+            'trajectory' => $data['trajectory'],
+            'assessments' => $data['assessments'],
+            'attendances' => $data['attendances'],
+            'topicProgress' => $data['topicProgress'],
+            'canEdit' => $canEdit,
+            'canDelete' => $canDelete,
+        ]);
     }
 }

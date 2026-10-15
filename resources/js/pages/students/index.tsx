@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Head, useForm, router } from '@inertiajs/react';
+import { Head, Link, useForm, router } from '@inertiajs/react';
 import {
     Plus,
     Search,
@@ -7,6 +7,7 @@ import {
     GraduationCap,
     Pencil,
     Trash2,
+    FileText,
     Building2,
     Mail,
     Phone,
@@ -995,9 +996,12 @@ export default function StudentsIndex({
                                 {filteredAndSortedStudents.map((student) => (
                                     <tr key={student.id} className="hover:bg-muted/30 transition-colors">
                                         <td className="px-4 py-3">
-                                            <div className="font-semibold text-foreground">
+                                            <Link
+                                                href={`/students/${student.id}`}
+                                                className="font-semibold text-foreground hover:text-primary transition-colors hover:underline"
+                                            >
                                                 {student.first_name} {student.last_name}
-                                            </div>
+                                            </Link>
                                             {student.email && (
                                                 <div className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
                                                     <Mail className="h-3 w-3 shrink-0" /> {student.email}
@@ -1069,6 +1073,17 @@ export default function StudentsIndex({
                                         </td>
                                         <td className="px-4 py-3 text-right">
                                             <div className="flex items-center justify-end gap-1">
+                                                <Link href={`/students/${student.id}`}>
+                                                    <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        className="h-7 w-7 p-0 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                                                        title="Ver ficha y trayecto del estudiante"
+                                                    >
+                                                        <FileText className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                </Link>
                                                 <Button
                                                     type="button"
                                                     size="sm"

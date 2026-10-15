@@ -13,6 +13,7 @@ import {
     Sparkles,
     GraduationCap,
     Trash2,
+    FileText,
     UserCheck,
     Pencil,
     CornerDownRight,
@@ -1368,16 +1369,19 @@ export default function CourseShow({
                                             <th className="px-4 py-3 font-semibold text-foreground">Cédula/Carnet</th>
                                             <th className="px-4 py-3 font-semibold text-foreground">Puesto/PC Asignada</th>
                                             <th className="px-4 py-3 font-semibold text-foreground">Estado Matrícula</th>
-                                            {!isReadOnly && (
-                                                <th className="px-4 py-3 font-semibold text-foreground text-right min-w-[70px]">Acciones</th>
-                                            )}
+                                            <th className="px-4 py-3 font-semibold text-foreground text-right min-w-[70px]">Acciones</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border">
                                         {course.students.map((student) => (
                                             <tr key={student.id} className="hover:bg-muted/30">
                                                 <td className="px-4 py-3 font-medium text-foreground">
-                                                    {student.last_name}, {student.first_name}
+                                                    <Link
+                                                        href={`/students/${student.id}`}
+                                                        className="hover:text-primary transition-colors hover:underline inline-flex items-center gap-1.5"
+                                                    >
+                                                        <span>{student.last_name}, {student.first_name}</span>
+                                                    </Link>
                                                 </td>
                                                 <td className="px-4 py-3 text-muted-foreground font-mono">
                                                     {student.student_id_number || '—'}
@@ -1410,20 +1414,33 @@ export default function CourseShow({
                                                             : 'Activo'}
                                                     </span>
                                                 </td>
-                                                {!isReadOnly && (
-                                                    <td className="px-4 py-3 text-right">
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                                                            onClick={() => handleRemoveStudent(student.id, `${student.first_name} ${student.last_name}`)}
-                                                            title="Desmatricular estudiante"
-                                                        >
-                                                            <Trash2 className="h-3.5 w-3.5" />
-                                                        </Button>
-                                                    </td>
-                                                )}
+                                                <td className="px-4 py-3 text-right">
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <Link href={`/students/${student.id}`}>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-7 w-7 p-0 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                                                                title="Ver ficha del estudiante"
+                                                            >
+                                                                <FileText className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        </Link>
+                                                        {!isReadOnly && (
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                                                onClick={() => handleRemoveStudent(student.id, `${student.first_name} ${student.last_name}`)}
+                                                                title="Desmatricular estudiante"
+                                                            >
+                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                </td>
                                             </tr>
                                         ))}
                                     </tbody>
