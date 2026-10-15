@@ -34,10 +34,6 @@ import { Label } from '@/components/ui/label';
 import { CoverageMatrix } from '@/components/coverage-matrix';
 import { CourseAssessments } from '@/components/course-assessments';
 import {
-    StudentPromotionDialog,
-    TargetCourseOption,
-} from '@/components/student-promotion-dialog';
-import {
     Dialog,
     DialogContent,
     DialogDescription,
@@ -146,7 +142,6 @@ interface Props {
     availableTeachers?: Array<{ id: number; name: string; email: string }>;
     institutionStudents?: InstitutionStudentItem[];
     canManageTeachers?: boolean;
-    availableTargetCourses?: TargetCourseOption[];
 }
 
 export default function CourseShow({
@@ -156,10 +151,8 @@ export default function CourseShow({
     availableTeachers = [],
     institutionStudents = [],
     canManageTeachers = false,
-    availableTargetCourses = [],
 }: Props) {
     const isReadOnly = Boolean(course.is_read_only || course.status === 'archived' || course.academic_period?.is_closed);
-    const [openPromotionDialog, setOpenPromotionDialog] = useState(false);
     const [activeTab, setActiveTab] = useState<'matrix' | 'pensum' | 'students' | 'sessions' | 'teachers' | 'grades'>('matrix');
     const [openAddTopicDialog, setOpenAddTopicDialog] = useState(false);
     const [openBulkImportDialog, setOpenBulkImportDialog] = useState(false);
@@ -521,18 +514,6 @@ export default function CourseShow({
                     </div>
 
                     <div className="flex items-center gap-3">
-                        {/* Student Promotion Button */}
-                        {course.students.length > 0 && (availableTargetCourses.length > 0 || !isReadOnly) && (
-                            <Button
-                                variant="outline"
-                                className="gap-2 border-primary/40 text-primary hover:bg-primary/5 shadow-xs"
-                                onClick={() => setOpenPromotionDialog(true)}
-                                title="Promover, asignar repitentes o registrar retiros hacia el próximo ciclo"
-                            >
-                                <GraduationCap className="h-4 w-4" /> Promover Estudiantes
-                            </Button>
-                        )}
-
                         {!isReadOnly && (
                             <>
                                 <Button
@@ -1259,18 +1240,6 @@ export default function CourseShow({
                             </div>
 
                             <div className="flex items-center gap-2">
-                                {course.students.length > 0 && (availableTargetCourses.length > 0 || !isReadOnly) && (
-                                    <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="gap-2 border-primary/40 text-primary hover:bg-primary/5 shadow-xs"
-                                        onClick={() => setOpenPromotionDialog(true)}
-                                        title="Promover, asignar repitentes o registrar retiros hacia el próximo ciclo"
-                                    >
-                                        <GraduationCap className="h-4 w-4" /> Promover Estudiantes
-                                    </Button>
-                                )}
-
                                 {!isReadOnly && (
                                     <Dialog open={openEnrollDialog} onOpenChange={setOpenEnrollDialog}>
                                         <DialogTrigger asChild>
@@ -1797,15 +1766,6 @@ export default function CourseShow({
                         readOnly={isReadOnly}
                     />
                 )}
-
-                {/* Student Promotion Dialog */}
-                <StudentPromotionDialog
-                    open={openPromotionDialog}
-                    onOpenChange={setOpenPromotionDialog}
-                    course={course}
-                    students={course.students || []}
-                    availableTargetCourses={availableTargetCourses}
-                />
 
                 {/* Custom Confirmation Dialog */}
                 <ConfirmDialogComponent />

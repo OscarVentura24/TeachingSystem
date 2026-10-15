@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\AcademicPeriod;
 use App\Models\Course;
 use App\Models\CourseTopic;
+use App\Models\Enrollment;
+use App\Models\Student;
 use Illuminate\Support\Facades\DB;
 
 class AcademicPeriodRolloverService
@@ -104,6 +106,8 @@ class AcademicPeriodRolloverService
                     ->get();
 
                 $promoteStudents = $options['promote_students'] ?? false;
+                $promotions = $options['promotions'] ?? [];
+                $clonedCoursesMap = [];
 
                 foreach ($coursesToClone as $sourceCourse) {
                     $newCourse = Course::create([
@@ -116,6 +120,8 @@ class AcademicPeriodRolloverService
                         'color' => $sourceCourse->color,
                         'status' => 'active',
                     ]);
+
+                    $clonedCoursesMap[$sourceCourse->id] = $newCourse;
 
                     // Clone teachers
                     foreach ($sourceCourse->teachers as $teacher) {
@@ -155,15 +161,87 @@ class AcademicPeriodRolloverService
                             }
                         }
                     }
+                }
 
-                    // Promote / Enroll students if requested
-                    if ($promoteStudents) {
-                        foreach ($sourceCourse->students as $student) {
-                            $newCourse->students()->attach($student->id, [
-                                'preferred_workstation' => $student->pivot->preferred_workstation,
-                                'status' => 'active',
-                                'enrolled_at' => now(),
-                            ]);
+                // Process student promotions if configured
+                if (!empty($promotions)) {
+                    foreach ($promotions as $item) {
+                        $studentId = (int) $item['student_id'];
+                        $sourceCourseId = (int) $item['source_course_id'];
+                        $action = $item['action'] ?? 'none';
+                        $targetSourceCourseId = !empty($item['target_source_course_id']) ? (int) $item['target_source_course_id'] : null;
+                        $markInactive = !empty($item['mark_institution_inactive']);
+
+                        if ($action === 'none') {
+                            continue;
+                        }
+
+                        $sourceEnrollment = Enrollment::where('course_id', $sourceCourseId)
+                            ->where('student_id', $studentId)
+                            ->first();
+
+                        $student = Student::find($studentId);
+                        if (!$sourceEnrollment || !$student) {
+                            continue;
+                        }
+
+                        if ($action === 'promote') {
+                            // Update historical status in source course
+                            $sourceEnrollment->update(['status' => 'promoted']);
+
+                            // Enroll in target course clone in new period
+                            $targetNewCourse = $targetSourceCourseId && isset($clonedCoursesMap[$targetSourceCourseId])
+                                ? $clonedCoursesMap[$targetSourceCourseId]
+                                : null;
+
+                            if ($targetNewCourse) {
+                                Enrollment::create([
+                                    'course_id' => $targetNewCourse->id,
+                                    'student_id' => $studentId,
+                                    'status' => 'active',
+                                    'preferred_workstation' => $sourceEnrollment->preferred_workstation,
+                                    'enrolled_at' => now(),
+                                ]);
+                            }
+                        } elseif ($action === 'repeat') {
+                            // Update historical status in source course
+                            $sourceEnrollment->update(['status' => 'repeated']);
+
+                            // Repeater is enrolled in the new period's clone of the SAME level/course
+                            $targetNewCourse = $clonedCoursesMap[$sourceCourseId] ?? null;
+
+                            if ($targetNewCourse) {
+                                Enrollment::create([
+                                    'course_id' => $targetNewCourse->id,
+                                    'student_id' => $studentId,
+                                    'status' => 'active',
+                                    'preferred_workstation' => $sourceEnrollment->preferred_workstation,
+                                    'enrolled_at' => now(),
+                                ]);
+                            }
+                        } elseif ($action === 'withdraw') {
+                            $sourceEnrollment->update(['status' => 'withdrawn']);
+                            if ($markInactive) {
+                                $student->update(['is_active' => false]);
+                            }
+                        }
+
+                        if ($action !== 'withdraw' && !$student->is_active) {
+                            $student->update(['is_active' => true]);
+                        }
+                    }
+                } elseif ($promoteStudents) {
+                    // Legacy fallback: attach to identical cloned course
+                    foreach ($coursesToClone as $sourceCourse) {
+                        $newCourse = $clonedCoursesMap[$sourceCourse->id] ?? null;
+                        if ($newCourse) {
+                            foreach ($sourceCourse->students as $student) {
+                                $newCourse->students()->attach($student->id, [
+                                    'preferred_workstation' => $student->pivot->preferred_workstation,
+                                    'status' => 'active',
+                                    'enrolled_at' => now(),
+                                ]);
+                            }
                         }
                     }
                 }

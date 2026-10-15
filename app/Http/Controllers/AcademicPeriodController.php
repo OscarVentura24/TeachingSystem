@@ -134,6 +134,12 @@ class AcademicPeriodController extends Controller
             'clone_course_ids' => ['nullable', 'array'],
             'clone_course_ids.*' => ['integer', 'exists:courses,id'],
             'promote_students' => ['nullable', 'boolean'],
+            'promotions' => ['nullable', 'array'],
+            'promotions.*.student_id' => ['required', 'integer', 'exists:students,id'],
+            'promotions.*.source_course_id' => ['required', 'integer', 'exists:courses,id'],
+            'promotions.*.action' => ['required', 'string', 'in:promote,repeat,withdraw,none'],
+            'promotions.*.target_source_course_id' => ['nullable', 'integer', 'exists:courses,id'],
+            'promotions.*.mark_institution_inactive' => ['nullable', 'boolean'],
         ]);
 
         $newPeriod = $this->rolloverService->rollover(
@@ -148,6 +154,7 @@ class AcademicPeriodController extends Controller
                 'close_source_period' => $validated['close_source_period'] ?? true,
                 'clone_course_ids' => $validated['clone_course_ids'] ?? [],
                 'promote_students' => $validated['promote_students'] ?? false,
+                'promotions' => $validated['promotions'] ?? [],
             ]
         );
 

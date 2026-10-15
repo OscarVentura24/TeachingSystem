@@ -78,7 +78,12 @@ class CourseController extends Controller
         }
 
         $courses = $coursesQuery
-            ->with(['academicPeriod', 'teachers'])
+            ->with(['academicPeriod', 'teachers', 'students' => function ($q) {
+                $q->select('students.id', 'students.first_name', 'students.last_name', 'students.student_id_number')
+                  ->withPivot('status', 'preferred_workstation')
+                  ->orderBy('last_name')
+                  ->orderBy('first_name');
+            }])
             ->withCount(['students', 'courseTopics', 'sessions'])
             ->latest()
             ->get();
@@ -148,7 +153,10 @@ class CourseController extends Controller
                     ->orderBy('sort_order')
                     ->with('subtopics');
             },
-            'students' => function ($query) {
+            'students' => function ($query) use ($course) {
+                if (!$course->isReadOnly()) {
+                    $query->wherePivotIn('status', ['active', 'repeated']);
+                }
                 $query->orderBy('last_name')->orderBy('first_name');
             },
             'sessions' => function ($query) {
@@ -201,19 +209,6 @@ class CourseController extends Controller
         $canManageTeachers = $request->user()->isInstitutionAdmin($course->institution_id) ||
             $course->teachers()->where('users.id', $request->user()->id)->wherePivot('is_primary', true)->exists();
 
-        // Active target courses for student promotion / transfers
-        $availableTargetCourses = Course::where('institution_id', $course->institution_id)
-            ->where('status', '!=', 'archived')
-            ->where(function ($q) {
-                $q->whereNull('academic_period_id')
-                  ->orWhereHas('academicPeriod', function ($sub) {
-                      $sub->where('is_closed', false);
-                  });
-            })
-            ->with('academicPeriod:id,name,is_current')
-            ->orderBy('name')
-            ->get(['id', 'name', 'section', 'code', 'academic_period_id']);
-
         return Inertia::render('courses/show', [
             'course' => $course,
             'progressByStudent' => $progressRecords,
@@ -221,7 +216,6 @@ class CourseController extends Controller
             'availableTeachers' => $availableTeachers,
             'institutionStudents' => $institutionStudents,
             'canManageTeachers' => $canManageTeachers,
-            'availableTargetCourses' => $availableTargetCourses,
         ]);
     }
 

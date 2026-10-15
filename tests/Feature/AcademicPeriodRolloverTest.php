@@ -209,3 +209,97 @@ test('non-admin teacher cannot close, reopen or rollover academic periods', func
         ]);
     $rolloverResponse->assertForbidden();
 });
+
+test('admin can rollover period with customized student promotions across courses', function () {
+    // Source courses in 2025-II
+    $course3rd = Course::create([
+        'institution_id' => $this->institution->id,
+        'academic_period_id' => $this->period2025->id,
+        'name' => '3er Curso',
+        'section' => 'A',
+        'status' => 'active',
+    ]);
+
+    $course4th = Course::create([
+        'institution_id' => $this->institution->id,
+        'academic_period_id' => $this->period2025->id,
+        'name' => '4to Curso',
+        'section' => 'A',
+        'status' => 'active',
+    ]);
+
+    $studentPass = Student::create([
+        'institution_id' => $this->institution->id,
+        'first_name' => 'Mateo',
+        'last_name' => 'Almonte',
+        'is_active' => true,
+    ]);
+
+    $studentRepeat = Student::create([
+        'institution_id' => $this->institution->id,
+        'first_name' => 'Lucía',
+        'last_name' => 'Báez',
+        'is_active' => true,
+    ]);
+
+    $studentWithdraw = Student::create([
+        'institution_id' => $this->institution->id,
+        'first_name' => 'Gabriel',
+        'last_name' => 'Castillo',
+        'is_active' => true,
+    ]);
+
+    $course3rd->students()->attach($studentPass->id, ['status' => 'active']);
+    $course3rd->students()->attach($studentRepeat->id, ['status' => 'active']);
+    $course3rd->students()->attach($studentWithdraw->id, ['status' => 'active']);
+
+    $response = $this->actingAs($this->admin)
+        ->post(route('academic-periods.rollover', $this->period2025), [
+            'new_period_name' => '2026-I',
+            'close_source_period' => true,
+            'clone_course_ids' => [$course3rd->id, $course4th->id],
+            'promotions' => [
+                [
+                    'student_id' => $studentPass->id,
+                    'source_course_id' => $course3rd->id,
+                    'action' => 'promote',
+                    'target_source_course_id' => $course4th->id, // passes to 4to Curso clone
+                ],
+                [
+                    'student_id' => $studentRepeat->id,
+                    'source_course_id' => $course3rd->id,
+                    'action' => 'repeat', // repeats 3er Curso clone
+                ],
+                [
+                    'student_id' => $studentWithdraw->id,
+                    'source_course_id' => $course3rd->id,
+                    'action' => 'withdraw',
+                    'mark_institution_inactive' => true,
+                ],
+            ],
+        ]);
+
+    $response->assertRedirect();
+
+    $newPeriod = AcademicPeriod::where('name', '2026-I')->first();
+    $newCourse3rd = Course::where('academic_period_id', $newPeriod->id)->where('name', '3er Curso')->first();
+    $newCourse4th = Course::where('academic_period_id', $newPeriod->id)->where('name', '4to Curso')->first();
+
+    // Check new 4to Curso has studentPass active
+    expect($newCourse4th->students()->where('student_id', $studentPass->id)->wherePivot('status', 'active')->exists())->toBeTrue();
+    expect($newCourse4th->students()->where('student_id', $studentRepeat->id)->exists())->toBeFalse();
+
+    // Check new 3er Curso has ONLY studentRepeat active
+    expect($newCourse3rd->students()->where('student_id', $studentRepeat->id)->wherePivot('status', 'active')->exists())->toBeTrue();
+    expect($newCourse3rd->students()->where('student_id', $studentPass->id)->exists())->toBeFalse();
+    expect($newCourse3rd->students()->where('student_id', $studentWithdraw->id)->exists())->toBeFalse();
+
+    // Check old 3er Curso has historical statuses preserved
+    expect($course3rd->students()->where('student_id', $studentPass->id)->first()->pivot->status)->toBe('promoted');
+    expect($course3rd->students()->where('student_id', $studentRepeat->id)->first()->pivot->status)->toBe('repeated');
+    expect($course3rd->students()->where('student_id', $studentWithdraw->id)->first()->pivot->status)->toBe('withdrawn');
+
+    // Check studentWithdraw was marked inactive in institution
+    $studentWithdraw->refresh();
+    expect($studentWithdraw->is_active)->toBeFalse();
+});
