@@ -303,3 +303,24 @@ test('admin can rollover period with customized student promotions across course
     $studentWithdraw->refresh();
     expect($studentWithdraw->is_active)->toBeFalse();
 });
+
+test('admin can view the transition page for an academic period', function () {
+    $response = $this->actingAs($this->admin)
+        ->get(route('academic-periods.transition'));
+
+    $response->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('academic-periods/transition')
+            ->has('sourcePeriod')
+            ->has('academicPeriods')
+            ->has('courses')
+            ->has('activeInstitution')
+        );
+});
+
+test('non-admin user cannot access the transition page', function () {
+    $response = $this->actingAs($this->teacher)
+        ->get(route('academic-periods.transition'));
+
+    $response->assertForbidden();
+});

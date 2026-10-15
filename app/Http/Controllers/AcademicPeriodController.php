@@ -3,14 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Models\AcademicPeriod;
+use App\Models\Course;
+use App\Models\Institution;
 use App\Services\AcademicPeriodRolloverService;
+use App\Services\InstitutionContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class AcademicPeriodController extends Controller
 {
     public function __construct(
-        protected AcademicPeriodRolloverService $rolloverService
+        protected AcademicPeriodRolloverService $rolloverService,
+        protected InstitutionContext $contextService
     ) {}
 
     /**
@@ -160,5 +166,67 @@ class AcademicPeriodController extends Controller
 
         return redirect()->route('courses.index', ['academic_period_id' => $newPeriod->id])
             ->with('success', "Transición completada exitosamente al nuevo período: {$newPeriod->name}.");
+    }
+
+    /**
+     * Show the dedicated transition / rollover page.
+     */
+    public function transition(Request $request): Response|RedirectResponse
+    {
+        $user = $request->user();
+        $activeInstitutionId = $this->contextService->getActiveInstitutionId($request);
+
+        if (! $activeInstitutionId) {
+            $available = $this->contextService->getAvailableInstitutions($user);
+            if ($available->isNotEmpty()) {
+                $activeInstitutionId = $available->first()->id;
+            } else {
+                return redirect()->route('courses.index')->with('error', 'Debes pertenecer a una institución para gestionar la transición.');
+            }
+        }
+
+        if (! $user->isInstitutionAdmin($activeInstitutionId)) {
+            abort(403, 'No tienes permiso para gestionar la transición de períodos de esta institución.');
+        }
+
+        $activeInstitution = Institution::findOrFail($activeInstitutionId);
+
+        $academicPeriods = AcademicPeriod::where('institution_id', $activeInstitutionId)
+            ->orderByDesc('is_current')
+            ->orderByDesc('id')
+            ->get();
+
+        $sourcePeriodId = $request->input('source_period_id');
+        $sourcePeriod = $sourcePeriodId
+            ? $academicPeriods->firstWhere('id', (int) $sourcePeriodId)
+            : $academicPeriods->firstWhere('is_current', true);
+
+        if (! $sourcePeriod && $academicPeriods->isNotEmpty()) {
+            $sourcePeriod = $academicPeriods->first();
+        }
+
+        if (! $sourcePeriod) {
+            return redirect()->route('courses.index')->with('error', 'No existe ningún período académico para realizar la transición.');
+        }
+
+        $courses = Course::where('institution_id', $activeInstitutionId)
+            ->where('academic_period_id', $sourcePeriod->id)
+            ->with(['students' => function ($q) {
+                $q->select('students.id', 'students.first_name', 'students.last_name', 'students.student_id_number')
+                  ->wherePivotIn('status', ['active', 'repeated'])
+                  ->withPivot('status', 'preferred_workstation')
+                  ->orderBy('last_name')
+                  ->orderBy('first_name');
+            }, 'teachers'])
+            ->withCount(['students', 'courseTopics', 'sessions'])
+            ->orderBy('name')
+            ->get();
+
+        return Inertia::render('academic-periods/transition', [
+            'sourcePeriod' => $sourcePeriod,
+            'academicPeriods' => $academicPeriods,
+            'courses' => $courses,
+            'activeInstitution' => $activeInstitution,
+        ]);
     }
 }

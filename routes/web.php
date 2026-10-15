@@ -45,6 +45,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/subjects/{subject}', [SubjectController::class, 'destroy'])->name('subjects.destroy');
 
     // Academic Periods (Períodos Académicos)
+    Route::get('/academic-periods/transition', [\App\Http\Controllers\AcademicPeriodController::class, 'transition'])->name('academic-periods.transition');
     Route::post('/academic-periods', [\App\Http\Controllers\AcademicPeriodController::class, 'store'])->name('academic-periods.store');
     Route::put('/academic-periods/{academicPeriod}', [\App\Http\Controllers\AcademicPeriodController::class, 'update'])->name('academic-periods.update');
     Route::delete('/academic-periods/{academicPeriod}', [\App\Http\Controllers\AcademicPeriodController::class, 'destroy'])->name('academic-periods.destroy');

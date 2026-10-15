@@ -37,7 +37,6 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
-import { AcademicPeriodRolloverDialog } from '@/components/academic-period-rollover-dialog';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { formatNaturalDate } from '@/lib/formatters';
 
@@ -99,7 +98,6 @@ export default function CoursesIndex({
     const [openManagePeriodsDialog, setOpenManagePeriodsDialog] = useState(false);
     const [openEditPeriodDialog, setOpenEditPeriodDialog] = useState(false);
     const [editingPeriod, setEditingPeriod] = useState<AcademicPeriod | null>(null);
-    const [openRolloverDialog, setOpenRolloverDialog] = useState(false);
     const { confirm, ConfirmDialogComponent } = useConfirmDialog();
 
     // Search & Multi-factor sorting state
@@ -366,15 +364,16 @@ export default function CoursesIndex({
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
-                        {/* Rollover / Academic Period Transition Wizard */}
+                        {/* Rollover / Academic Period Transition Page Link */}
                         {isInstitutionAdmin && (
-                            <Button
-                                variant="outline"
-                                className="gap-2 border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
-                                onClick={() => setOpenRolloverDialog(true)}
-                            >
-                                <Sparkles className="h-4 w-4" /> Transición de Período
-                            </Button>
+                            <Link href="/academic-periods/transition">
+                                <Button
+                                    variant="outline"
+                                    className="gap-2 border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
+                                >
+                                    <Sparkles className="h-4 w-4" /> Transición de Período
+                                </Button>
+                            </Link>
                         )}
 
                         {/* Manage Academic Periods modal trigger */}
@@ -1174,15 +1173,6 @@ export default function CoursesIndex({
                         </form>
                     </DialogContent>
                 </Dialog>
-
-                {/* Academic Period Rollover Wizard Dialog */}
-                <AcademicPeriodRolloverDialog
-                    open={openRolloverDialog}
-                    onOpenChange={setOpenRolloverDialog}
-                    currentPeriod={currentPeriodInSystem}
-                    courses={courses}
-                    academicPeriods={academicPeriods}
-                />
 
                 {/* Custom Confirmation Dialog */}
                 <ConfirmDialogComponent />
