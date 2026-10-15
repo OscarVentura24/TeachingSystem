@@ -36,7 +36,7 @@ class PensumDuplicationService
         $targetName = mb_strtolower(trim($targetCourse->name));
         $targetCode = $targetCourse->code ? mb_strtolower(trim($targetCourse->code)) : null;
 
-        return $courses->map(function ($source) use ($targetName, $targetCode) {
+        return $courses->map(function ($source) use ($targetCourse, $targetName, $targetCode) {
             $sourceName = mb_strtolower(trim($source->name));
             $sourceCode = $source->code ? mb_strtolower(trim($source->code)) : null;
 
