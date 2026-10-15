@@ -21,6 +21,7 @@ import {
     ExternalLink,
     Filter,
     HelpCircle,
+    ArrowUpDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -108,7 +109,19 @@ export default function AssessmentGrade({ course, assessment, students, readOnly
     const [scores, setScores] = useState(initialScores);
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<FilterType>('all');
+    const [studentSortBy, setStudentSortBy] = useState<'matricula' | 'name'>('matricula');
+    const [studentSortDir, setStudentSortDir] = useState<'asc' | 'desc'>('asc');
     const [isSaving, setIsSaving] = useState(false);
+
+    const toggleStudentSort = () => {
+        if (studentSortBy === 'matricula') {
+            if (studentSortDir === 'asc') setStudentSortDir('desc');
+            else { setStudentSortBy('name'); setStudentSortDir('asc'); }
+        } else {
+            if (studentSortDir === 'asc') setStudentSortDir('desc');
+            else { setStudentSortBy('matricula'); setStudentSortDir('asc'); }
+        }
+    };
 
     // Assessment type label & color
     const typeBadge = useMemo(() => {
@@ -199,9 +212,9 @@ export default function AssessmentGrade({ course, assessment, students, readOnly
         });
     };
 
-    // Filter students
+    // Filter and sort students
     const filteredStudents = useMemo(() => {
-        return students.filter((st) => {
+        const filtered = students.filter((st) => {
             const q = searchQuery.toLowerCase().trim();
             const matchesQuery =
                 !q ||
@@ -231,7 +244,24 @@ export default function AssessmentGrade({ course, assessment, students, readOnly
                     return true;
             }
         });
-    }, [students, scores, searchQuery, statusFilter, passingScore]);
+
+        return [...filtered].sort((a, b) => {
+            if (studentSortBy === 'matricula') {
+                const matA = a.student_id_number || '';
+                const matB = b.student_id_number || '';
+                if (!matA && !matB) return 0;
+                if (!matA) return 1;
+                if (!matB) return -1;
+                const cmp = matA.localeCompare(matB, 'es', { numeric: true, sensitivity: 'base' });
+                return studentSortDir === 'asc' ? cmp : -cmp;
+            } else {
+                const nameA = `${a.last_name} ${a.first_name}`.trim();
+                const nameB = `${b.last_name} ${b.first_name}`.trim();
+                const cmp = nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
+                return studentSortDir === 'asc' ? cmp : -cmp;
+            }
+        });
+    }, [students, scores, searchQuery, statusFilter, passingScore, studentSortBy, studentSortDir]);
 
     // Save grades
     const handleSave = (e: React.FormEvent) => {
@@ -435,15 +465,28 @@ export default function AssessmentGrade({ course, assessment, students, readOnly
 
                 {/* Filter & Search Bar */}
                 <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-card border rounded-2xl p-4 shadow-xs">
-                    <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            type="text"
-                            placeholder="Buscar por nombre, apellido o matrícula..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-9 text-xs h-9 bg-background"
-                        />
+                    <div className="flex items-center gap-2 max-w-md flex-1">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                type="text"
+                                placeholder="Buscar por nombre, apellido o matrícula..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="pl-9 text-xs h-9 bg-background"
+                            />
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={toggleStudentSort}
+                            className="h-9 text-xs gap-1.5 shrink-0"
+                            title={`Ordenar lista por ${studentSortBy === 'matricula' ? 'Nombre' : 'Matrícula'} (${studentSortDir === 'asc' ? 'Ascendente' : 'Descendente'})`}
+                        >
+                            <ArrowUpDown className="h-3.5 w-3.5 text-primary" />
+                            <span>{studentSortBy === 'matricula' ? 'Por Matrícula' : 'Por Nombre'}</span>
+                        </Button>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
@@ -537,7 +580,16 @@ export default function AssessmentGrade({ course, assessment, students, readOnly
                                     <thead className="bg-muted/70 border-b text-muted-foreground uppercase tracking-wider text-[11px] font-semibold">
                                         <tr>
                                             <th className="px-4 py-3.5 w-12 text-center">#</th>
-                                            <th className="px-4 py-3.5 min-w-[220px]">Estudiante</th>
+                                            <th
+                                                className="px-4 py-3.5 min-w-[220px] cursor-pointer hover:bg-muted/90 select-none transition-colors"
+                                                onClick={toggleStudentSort}
+                                                title="Clic para alternar orden por Matrícula / Nombre"
+                                            >
+                                                <div className="flex items-center justify-between gap-1">
+                                                    <span>Estudiante ({filteredStudents.length})</span>
+                                                    <ArrowUpDown className="h-3.5 w-3.5 text-primary shrink-0" />
+                                                </div>
+                                            </th>
                                             <th className="px-4 py-3.5 w-[160px]">Asistencia</th>
                                             <th className="px-4 py-3.5 w-[160px] text-center">Calificación (0 - {maxScore})</th>
                                             <th className="px-4 py-3.5 w-[170px] text-center">Impacto Pedagógico</th>

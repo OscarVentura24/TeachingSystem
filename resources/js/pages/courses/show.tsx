@@ -30,6 +30,7 @@ import {
     Award,
     Lock,
     Copy,
+    ArrowUpDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -343,6 +344,59 @@ export default function CourseShow({
         student_id: '',
         preferred_workstation: '',
     });
+
+    const [studentSortBy, setStudentSortBy] = useState<'matricula' | 'name' | 'workstation' | 'status'>('matricula');
+    const [studentSortDir, setStudentSortDir] = useState<'asc' | 'desc'>('asc');
+    const [studentSearch, setStudentSearch] = useState('');
+
+    const toggleStudentSort = (column: 'matricula' | 'name' | 'workstation' | 'status') => {
+        if (studentSortBy === column) {
+            setStudentSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+        } else {
+            setStudentSortBy(column);
+            setStudentSortDir('asc');
+        }
+    };
+
+    const sortedCourseStudents = useMemo(() => {
+        const query = studentSearch.toLowerCase().trim();
+        const filtered = course.students.filter((st) => {
+            if (!query) return true;
+            return (
+                st.first_name.toLowerCase().includes(query) ||
+                st.last_name.toLowerCase().includes(query) ||
+                (st.student_id_number && st.student_id_number.toLowerCase().includes(query)) ||
+                (st.preferred_workstation && st.preferred_workstation.toLowerCase().includes(query))
+            );
+        });
+
+        return [...filtered].sort((a, b) => {
+            if (studentSortBy === 'matricula') {
+                const matA = a.student_id_number || '';
+                const matB = b.student_id_number || '';
+                if (!matA && !matB) return 0;
+                if (!matA) return 1;
+                if (!matB) return -1;
+                const cmp = matA.localeCompare(matB, 'es', { numeric: true, sensitivity: 'base' });
+                return studentSortDir === 'asc' ? cmp : -cmp;
+            } else if (studentSortBy === 'name') {
+                const nameA = `${a.last_name} ${a.first_name}`.trim();
+                const nameB = `${b.last_name} ${b.first_name}`.trim();
+                const cmp = nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
+                return studentSortDir === 'asc' ? cmp : -cmp;
+            } else if (studentSortBy === 'workstation') {
+                const wsA = a.preferred_workstation || '';
+                const wsB = b.preferred_workstation || '';
+                const cmp = wsA.localeCompare(wsB, 'es', { numeric: true, sensitivity: 'base' });
+                return studentSortDir === 'asc' ? cmp : -cmp;
+            } else {
+                const statA = a.pivot?.status || 'active';
+                const statB = b.pivot?.status || 'active';
+                const cmp = statA.localeCompare(statB, 'es');
+                return studentSortDir === 'asc' ? cmp : -cmp;
+            }
+        });
+    }, [course.students, studentSearch, studentSortBy, studentSortDir]);
 
     const enrolledStudentIds = new Set(course.students.map((s) => s.id));
     const availableStudents = institutionStudents.filter((s) => !enrolledStudentIds.has(s.id));
@@ -1266,17 +1320,41 @@ export default function CourseShow({
                     <div className="space-y-4">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div>
-                                <h3 className="text-base font-semibold text-foreground">Alumnos Matriculados</h3>
+                                <h3 className="text-base font-semibold text-foreground">Alumnos Matriculados ({course.students.length})</h3>
                                 <p className="text-xs text-muted-foreground">
                                     Estudiantes asignados a esta sección y su puesto/PC preferido.
                                 </p>
                             </div>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                {course.students.length > 0 && (
+                                    <div className="relative w-44 sm:w-60">
+                                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                        <Input
+                                            type="text"
+                                            placeholder="Buscar alumno o cédula..."
+                                            value={studentSearch}
+                                            onChange={(e) => setStudentSearch(e.target.value)}
+                                            className="h-8 pl-8 text-xs"
+                                        />
+                                    </div>
+                                )}
+
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => toggleStudentSort(studentSortBy === 'matricula' ? 'name' : 'matricula')}
+                                    className="text-xs h-8 px-2.5 gap-1.5"
+                                    title={`Ordenar lista por ${studentSortBy === 'matricula' ? 'Nombre' : 'Matrícula'} (${studentSortDir === 'asc' ? 'Asc' : 'Desc'})`}
+                                >
+                                    <ArrowUpDown className="h-3.5 w-3.5 text-primary" />
+                                    <span>{studentSortBy === 'matricula' ? 'Por Matrícula' : 'Por Nombre'}</span>
+                                </Button>
+
                                 {!isReadOnly && (
                                     <Dialog open={openEnrollDialog} onOpenChange={setOpenEnrollDialog}>
                                         <DialogTrigger asChild>
-                                            <Button size="sm" className="gap-2">
+                                            <Button size="sm" className="gap-2 h-8">
                                                 <Plus className="h-4 w-4" /> Matricular Estudiante
                                             </Button>
                                         </DialogTrigger>
@@ -1397,15 +1475,51 @@ export default function CourseShow({
                                 <table className="w-full text-left text-xs border-collapse">
                                     <thead className="bg-muted/50 border-b">
                                         <tr>
-                                            <th className="px-4 py-3 font-semibold text-foreground">Nombre Completo</th>
-                                            <th className="px-4 py-3 font-semibold text-foreground">Cédula/Carnet</th>
-                                            <th className="px-4 py-3 font-semibold text-foreground">Puesto/PC Asignada</th>
-                                            <th className="px-4 py-3 font-semibold text-foreground">Estado Matrícula</th>
+                                            <th
+                                                className="px-4 py-3 font-semibold text-foreground cursor-pointer hover:bg-muted/70 transition-colors select-none"
+                                                onClick={() => toggleStudentSort('name')}
+                                                title="Ordenar por Nombre"
+                                            >
+                                                <div className="flex items-center gap-1.5">
+                                                    <span>Nombre Completo</span>
+                                                    <ArrowUpDown className={`h-3 w-3 ${studentSortBy === 'name' ? 'text-primary' : 'text-muted-foreground/40'}`} />
+                                                </div>
+                                            </th>
+                                            <th
+                                                className="px-4 py-3 font-semibold text-foreground cursor-pointer hover:bg-muted/70 transition-colors select-none"
+                                                onClick={() => toggleStudentSort('matricula')}
+                                                title="Ordenar por Matrícula / Cédula"
+                                            >
+                                                <div className="flex items-center gap-1.5">
+                                                    <span>Cédula/Carnet</span>
+                                                    <ArrowUpDown className={`h-3 w-3 ${studentSortBy === 'matricula' ? 'text-primary' : 'text-muted-foreground/40'}`} />
+                                                </div>
+                                            </th>
+                                            <th
+                                                className="px-4 py-3 font-semibold text-foreground cursor-pointer hover:bg-muted/70 transition-colors select-none"
+                                                onClick={() => toggleStudentSort('workstation')}
+                                                title="Ordenar por Puesto"
+                                            >
+                                                <div className="flex items-center gap-1.5">
+                                                    <span>Puesto/PC Asignada</span>
+                                                    <ArrowUpDown className={`h-3 w-3 ${studentSortBy === 'workstation' ? 'text-primary' : 'text-muted-foreground/40'}`} />
+                                                </div>
+                                            </th>
+                                            <th
+                                                className="px-4 py-3 font-semibold text-foreground cursor-pointer hover:bg-muted/70 transition-colors select-none"
+                                                onClick={() => toggleStudentSort('status')}
+                                                title="Ordenar por Estado"
+                                            >
+                                                <div className="flex items-center gap-1.5">
+                                                    <span>Estado Matrícula</span>
+                                                    <ArrowUpDown className={`h-3 w-3 ${studentSortBy === 'status' ? 'text-primary' : 'text-muted-foreground/40'}`} />
+                                                </div>
+                                            </th>
                                             <th className="px-4 py-3 font-semibold text-foreground text-right min-w-[70px]">Acciones</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border">
-                                        {course.students.map((student) => (
+                                        {sortedCourseStudents.map((student) => (
                                             <tr key={student.id} className="hover:bg-muted/30">
                                                 <td className="px-4 py-3 font-medium text-foreground">
                                                     <Link

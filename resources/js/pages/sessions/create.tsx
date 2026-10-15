@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Head, Link, useForm, router } from '@inertiajs/react';
 import {
     ArrowLeft,
@@ -14,6 +14,8 @@ import {
     Clock,
     Filter,
     CalendarDays,
+    ArrowUpDown,
+    Check,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +30,7 @@ interface Student {
     pivot?: {
         preferred_workstation?: string;
         status?: string;
+        student_id_number?: string;
     };
 }
 
@@ -47,6 +50,21 @@ interface Course {
     institution: { id: number; name: string };
 }
 
+interface TopicAnalysisItem {
+    course_topic_id: number;
+    title: string;
+    unit_title?: string;
+    sort_order: number;
+    ready_and_pending_count: number;
+    already_covered_count: number;
+    missing_prerequisites_count: number;
+    ready_students: Array<{ id: number; name: string }>;
+    already_covered_students: Array<{ id: number; name: string }>;
+    missing_prerequisite_students: Array<{ id: number; name: string }>;
+    is_fully_covered: boolean;
+    is_all_ready: boolean;
+}
+
 interface SuggestionResult {
     status: string;
     present_students_count: number;
@@ -59,6 +77,7 @@ interface SuggestionResult {
         already_covered_count?: number;
         missing_prerequisites_count?: number;
     } | null;
+    analysis?: TopicAnalysisItem[];
 }
 
 interface StudentAttendanceRecord {
@@ -138,6 +157,13 @@ export default function SessionCreate({ course, students, courseTopics, daySumma
     const [loadingDaySummary, setLoadingDaySummary] = useState(false);
     const [studentFilter, setStudentFilter] = useState<'all' | 'pending' | 'attended'>('all');
 
+    // Sorting state for students (name vs matricula)
+    const [studentSortBy, setStudentSortBy] = useState<'name' | 'matricula'>('matricula');
+    const [studentSortDir, setStudentSortDir] = useState<'asc' | 'desc'>('asc');
+
+    // Filter state for topics (all vs pending vs covered)
+    const [topicFilter, setTopicFilter] = useState<'all' | 'pending' | 'covered'>('all');
+
     const toggleStudentReinforcement = (id: number) => {
         setReinforcementStudentIds((prev) =>
             prev.includes(id) ? prev.filter((sId) => sId !== id) : [...prev, id]
@@ -177,7 +203,7 @@ export default function SessionCreate({ course, students, courseTopics, daySumma
             signal: controller.signal,
         })
             .then((res) => res.json())
-            .then((data) => {
+            .then((data: SuggestionResult) => {
                 setSuggestion(data);
                 setLoadingSuggestion(false);
             })
@@ -189,6 +215,35 @@ export default function SessionCreate({ course, students, courseTopics, daySumma
 
         return () => controller.abort();
     }, [selectedStudentIds, course.id]);
+
+    // Quick map for topic analysis by course_topic_id
+    const topicAnalysisMap = useMemo(() => {
+        const map: Record<number, TopicAnalysisItem> = {};
+        if (suggestion?.analysis) {
+            suggestion.analysis.forEach((item) => {
+                map[item.course_topic_id] = item;
+            });
+        }
+        return map;
+    }, [suggestion?.analysis]);
+
+    // Group coverage statistics across all topics
+    const coverageStats = useMemo(() => {
+        if (!suggestion?.analysis || selectedStudentIds.length === 0) {
+            return null;
+        }
+        const total = suggestion.analysis.length;
+        const fullyCovered = suggestion.analysis.filter((t) => t.is_fully_covered).length;
+        const allReady = suggestion.analysis.filter((t) => t.is_all_ready).length;
+        const partial = suggestion.analysis.filter(
+            (t) => t.already_covered_count > 0 && !t.is_fully_covered
+        ).length;
+        const missingPrereq = suggestion.analysis.filter(
+            (t) => t.missing_prerequisites_count > 0 && t.already_covered_count === 0
+        ).length;
+
+        return { total, fullyCovered, allReady, partial, missingPrereq };
+    }, [suggestion?.analysis, selectedStudentIds.length]);
 
     const { data, setData, post, processing, errors } = useForm({
         session_date: today,
@@ -270,7 +325,7 @@ export default function SessionCreate({ course, students, courseTopics, daySumma
     };
 
     const selectAllVisibleStudents = () => {
-        const visibleIds = filteredStudents.map((s) => s.id);
+        const visibleIds = filteredAndSortedStudents.map((s) => s.id);
         setSelectedStudentIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
     };
 
@@ -283,6 +338,22 @@ export default function SessionCreate({ course, students, courseTopics, daySumma
 
     const clearStudents = () => {
         setSelectedStudentIds([]);
+    };
+
+    const toggleStudentSort = () => {
+        if (studentSortBy === 'matricula') {
+            if (studentSortDir === 'asc') setStudentSortDir('desc');
+            else {
+                setStudentSortBy('name');
+                setStudentSortDir('asc');
+            }
+        } else {
+            if (studentSortDir === 'asc') setStudentSortDir('desc');
+            else {
+                setStudentSortBy('matricula');
+                setStudentSortDir('asc');
+            }
+        }
     };
 
     const toggleTopic = (id: number) => {
@@ -352,16 +423,58 @@ export default function SessionCreate({ course, students, courseTopics, daySumma
         });
     };
 
-    // Filter students by attendance in the day
+    // Filter students by attendance in the day & sort by matricula / name
     const attendedCount = students.filter((s) => daySummary.attended_student_ids.includes(s.id)).length;
     const pendingCount = students.length - attendedCount;
 
-    const filteredStudents = students.filter((s) => {
-        const alreadyAttended = daySummary.attended_student_ids.includes(s.id);
-        if (studentFilter === 'pending') return !alreadyAttended;
-        if (studentFilter === 'attended') return alreadyAttended;
-        return true;
-    });
+    const filteredAndSortedStudents = useMemo(() => {
+        const filtered = students.filter((s) => {
+            const alreadyAttended = daySummary.attended_student_ids.includes(s.id);
+            if (studentFilter === 'pending') return !alreadyAttended;
+            if (studentFilter === 'attended') return alreadyAttended;
+            return true;
+        });
+
+        return [...filtered].sort((a, b) => {
+            if (studentSortBy === 'matricula') {
+                const matA = a.student_id_number || a.pivot?.student_id_number || '';
+                const matB = b.student_id_number || b.pivot?.student_id_number || '';
+                if (!matA && !matB) return 0;
+                if (!matA) return 1;
+                if (!matB) return -1;
+                const cmp = matA.localeCompare(matB, 'es', { numeric: true, sensitivity: 'base' });
+                return studentSortDir === 'asc' ? cmp : -cmp;
+            } else {
+                const nameA = `${a.last_name} ${a.first_name}`.trim();
+                const nameB = `${b.last_name} ${b.first_name}`.trim();
+                const cmp = nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
+                return studentSortDir === 'asc' ? cmp : -cmp;
+            }
+        });
+    }, [students, daySummary.attended_student_ids, studentFilter, studentSortBy, studentSortDir]);
+
+    // Filter topics based on selected students' coverage
+    const filteredTopics = useMemo(() => {
+        if (topicFilter === 'all' || selectedStudentIds.length === 0 || !suggestion?.analysis) {
+            return courseTopics;
+        }
+
+        return courseTopics.filter((topic) => {
+            const hasSubtopics = topic.subtopics && topic.subtopics.length > 0;
+            if (hasSubtopics) {
+                const subAnalyses = topic.subtopics!.map((s) => topicAnalysisMap[s.id]);
+                const allSubCovered = subAnalyses.every((a) => a?.is_fully_covered);
+
+                if (topicFilter === 'covered') return allSubCovered;
+                if (topicFilter === 'pending') return !allSubCovered;
+            } else {
+                const analysis = topicAnalysisMap[topic.id];
+                if (topicFilter === 'covered') return Boolean(analysis?.is_fully_covered);
+                if (topicFilter === 'pending') return !Boolean(analysis?.is_fully_covered);
+            }
+            return true;
+        });
+    }, [courseTopics, topicFilter, selectedStudentIds.length, suggestion?.analysis, topicAnalysisMap]);
 
     return (
         <>
@@ -540,6 +653,21 @@ export default function SessionCreate({ course, students, courseTopics, daySumma
                                     )}
                                 </div>
                                 <div className="flex items-center gap-1.5">
+                                    {/* Sort Toggle Button by Matricula / Name */}
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={toggleStudentSort}
+                                        className="text-xs h-7 px-2 gap-1"
+                                        title={`Ordenar lista por ${studentSortBy === 'matricula' ? 'Matrícula' : 'Nombre'} (${studentSortDir === 'asc' ? 'Ascendente' : 'Descendente'})`}
+                                    >
+                                        <ArrowUpDown className="h-3 w-3 text-primary" />
+                                        <span>
+                                            {studentSortBy === 'matricula' ? 'Por Matrícula' : 'Por Nombre'} (
+                                            {studentSortDir === 'asc' ? 'Asc' : 'Desc'})
+                                        </span>
+                                    </Button>
+
                                     <Button
                                         size="sm"
                                         variant="outline"
@@ -547,7 +675,7 @@ export default function SessionCreate({ course, students, courseTopics, daySumma
                                         className="text-xs h-7 px-2"
                                         title="Seleccionar todos los estudiantes visibles según el filtro actual"
                                     >
-                                        Seleccionar visibles
+                                        Visibles
                                     </Button>
                                     <Button
                                         size="sm"
@@ -619,7 +747,7 @@ export default function SessionCreate({ course, students, courseTopics, daySumma
                             <div className="rounded-xl border border-dashed p-6 text-center text-muted-foreground text-xs">
                                 No hay estudiantes matriculados en este curso.
                             </div>
-                        ) : filteredStudents.length === 0 ? (
+                        ) : filteredAndSortedStudents.length === 0 ? (
                             <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground text-xs bg-card">
                                 <Users className="mx-auto h-7 w-7 text-muted-foreground/40 mb-2" />
                                 <p className="font-semibold text-foreground">
@@ -639,10 +767,11 @@ export default function SessionCreate({ course, students, courseTopics, daySumma
                             </div>
                         ) : (
                             <div className="divide-y rounded-xl border bg-card max-h-[460px] overflow-y-auto">
-                                {filteredStudents.map((student) => {
+                                {filteredAndSortedStudents.map((student) => {
                                     const isSelected = selectedStudentIds.includes(student.id);
                                     const studentSessions = daySummary.student_attendance_map[student.id] || [];
                                     const alreadyAttended = studentSessions.length > 0;
+                                    const matricula = student.student_id_number || student.pivot?.student_id_number;
 
                                     return (
                                         <div
@@ -687,9 +816,9 @@ export default function SessionCreate({ course, students, courseTopics, daySumma
                                                         )}
                                                     </div>
 
-                                                    {student.student_id_number && (
+                                                    {matricula && (
                                                         <span className="text-[10px] text-muted-foreground font-mono block">
-                                                            {student.student_id_number}
+                                                            Matrícula: {matricula}
                                                         </span>
                                                     )}
                                                 </div>
@@ -747,7 +876,7 @@ export default function SessionCreate({ course, students, courseTopics, daySumma
                         )}
                     </div>
 
-                    {/* Right Column: Live Suggestion & Topic Selection (5 cols) */}
+                    {/* Right Column: Live Suggestion & Topic Selection with Coverage Diagnosis (5 cols) */}
                     <div className="lg:col-span-5 space-y-5">
                         {/* Live Topic Suggestion Box */}
                         <div className="rounded-xl border bg-card p-4 shadow-xs space-y-3">
@@ -757,14 +886,14 @@ export default function SessionCreate({ course, students, courseTopics, daySumma
                                 </span>
                                 {loadingSuggestion && (
                                     <span className="text-[10px] text-muted-foreground animate-pulse">
-                                        Analizando grupo...
+                                        Analizando cobertura del grupo...
                                     </span>
                                 )}
                             </div>
 
                             {selectedStudentIds.length === 0 ? (
                                 <p className="text-xs text-muted-foreground">
-                                    Selecciona los estudiantes presentes en el aula o laboratorio para obtener la recomendación pedagógica en tiempo real.
+                                    Selecciona los estudiantes presentes en el aula o laboratorio para obtener la recomendación pedagógica en tiempo real y ver qué temas ya dominan todos.
                                 </p>
                             ) : suggestion?.primary_recommendation ? (
                                 <div className="space-y-2.5">
@@ -786,6 +915,24 @@ export default function SessionCreate({ course, students, courseTopics, daySumma
                                         </p>
                                     </div>
 
+                                    {/* Group Coverage Summary Chips */}
+                                    {coverageStats && (
+                                        <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
+                                            <div className="p-2 rounded bg-muted/40 border">
+                                                <span className="text-muted-foreground block text-[10px]">Vistos por todos:</span>
+                                                <span className="font-bold text-foreground">
+                                                    {coverageStats.fullyCovered} / {coverageStats.total} temas
+                                                </span>
+                                            </div>
+                                            <div className="p-2 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300">
+                                                <span className="block text-[10px]">Listos para iniciar:</span>
+                                                <span className="font-bold">
+                                                    {coverageStats.allReady} temas
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {suggestion.primary_recommendation.course_topic_id && (
                                         <Button
                                             type="button"
@@ -795,7 +942,7 @@ export default function SessionCreate({ course, students, courseTopics, daySumma
                                             onClick={applySuggestedTopic}
                                         >
                                             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                                            Seleccionar este tema para la sesión
+                                            Seleccionar tema recomendado
                                         </Button>
                                     )}
                                 </div>
@@ -806,28 +953,93 @@ export default function SessionCreate({ course, students, courseTopics, daySumma
                             )}
                         </div>
 
-                        {/* Topics Selection */}
+                        {/* Topics Selection with Group Coverage Insights */}
                         <div className="space-y-3">
-                            <div className="flex items-center gap-2">
-                                <BookOpen className="h-4 w-4 text-primary" />
-                                <h3 className="font-semibold text-sm text-foreground">
-                                    Temas a Explicar ({selectedTopicIds.length})
-                                </h3>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <BookOpen className="h-4 w-4 text-primary" />
+                                    <h3 className="font-semibold text-sm text-foreground">
+                                        Temas a Explicar ({selectedTopicIds.length})
+                                    </h3>
+                                </div>
+
+                                {/* Topic Filter: All vs Pending vs Covered */}
+                                {selectedStudentIds.length > 0 && coverageStats && (
+                                    <div className="flex items-center gap-1 border rounded-lg p-0.5 bg-muted/50 text-[11px]">
+                                        <button
+                                            type="button"
+                                            onClick={() => setTopicFilter('all')}
+                                            className={`px-2 py-0.5 rounded font-medium transition-colors ${
+                                                topicFilter === 'all'
+                                                    ? 'bg-background text-foreground shadow-xs font-semibold'
+                                                    : 'text-muted-foreground hover:text-foreground'
+                                            }`}
+                                        >
+                                            Todos
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setTopicFilter('pending')}
+                                            className={`px-2 py-0.5 rounded font-medium transition-colors ${
+                                                topicFilter === 'pending'
+                                                    ? 'bg-emerald-600 text-white shadow-xs font-semibold'
+                                                    : 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10'
+                                            }`}
+                                            title="Mostrar solo temas que no han sido vistos por todos los presentes"
+                                        >
+                                            Pendientes ({coverageStats.total - coverageStats.fullyCovered})
+                                        </button>
+                                        {coverageStats.fullyCovered > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setTopicFilter('covered')}
+                                                className={`px-2 py-0.5 rounded font-medium transition-colors ${
+                                                    topicFilter === 'covered'
+                                                        ? 'bg-background text-foreground shadow-xs font-semibold'
+                                                        : 'text-muted-foreground hover:text-foreground'
+                                                }`}
+                                                title="Mostrar temas ya vistos por todos los presentes"
+                                            >
+                                                Ya vistos ({coverageStats.fullyCovered})
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             {courseTopics.length === 0 ? (
                                 <div className="rounded-xl border border-dashed p-6 text-center text-muted-foreground text-xs">
                                     El pensum no tiene temas configurados.
                                 </div>
+                            ) : filteredTopics.length === 0 ? (
+                                <div className="rounded-xl border border-dashed p-6 text-center text-muted-foreground text-xs bg-card">
+                                    <p className="font-semibold text-foreground">
+                                        {topicFilter === 'pending'
+                                            ? '¡Excelente! Los alumnos seleccionados ya han cubierto todos los temas.'
+                                            : 'No hay temas que coincidan con este filtro.'}
+                                    </p>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="link"
+                                        onClick={() => setTopicFilter('all')}
+                                        className="text-xs text-primary mt-1"
+                                    >
+                                        Ver todos los temas
+                                    </Button>
+                                </div>
                             ) : (
-                                <div className="divide-y rounded-xl border bg-card max-h-[340px] overflow-y-auto">
-                                    {courseTopics.map((topic, index) => {
+                                <div className="divide-y rounded-xl border bg-card max-h-[360px] overflow-y-auto">
+                                    {filteredTopics.map((topic, index) => {
                                         const hasSubtopics = topic.subtopics && topic.subtopics.length > 0;
                                         const isTopicSelected = selectedTopicIds.includes(topic.id);
                                         const subIds = hasSubtopics ? topic.subtopics!.map((s) => s.id) : [];
                                         const allSubSelected = hasSubtopics && subIds.every((id) => selectedTopicIds.includes(id));
                                         const someSubSelected = hasSubtopics && subIds.some((id) => selectedTopicIds.includes(id));
                                         const isChecked = hasSubtopics ? allSubSelected : isTopicSelected;
+
+                                        // Analysis for topic itself (if parent topic has direct progress or no subtopics)
+                                        const topicAnalysis = topicAnalysisMap[topic.id];
 
                                         return (
                                             <div key={topic.id} className="p-3">
@@ -844,16 +1056,55 @@ export default function SessionCreate({ course, students, courseTopics, daySumma
                                                         className="mt-0.5 h-4 w-4 rounded text-primary border-muted-foreground cursor-pointer"
                                                     />
                                                     <div className="flex-1 cursor-pointer" onClick={() => toggleTopicGroup(topic)}>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-xs font-semibold text-foreground">
-                                                                {index + 1}. {topic.title}
-                                                            </span>
-                                                            {hasSubtopics && (
-                                                                <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground font-mono">
-                                                                    {topic.subtopics!.length} subtemas
+                                                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-xs font-semibold text-foreground">
+                                                                    {index + 1}. {topic.title}
                                                                 </span>
+                                                                {hasSubtopics && (
+                                                                    <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground font-mono">
+                                                                        {topic.subtopics!.length} subtemas
+                                                                    </span>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Coverage Badge for parent topic if no subtopics */}
+                                                            {!hasSubtopics && selectedStudentIds.length > 0 && topicAnalysis && (
+                                                                <div>
+                                                                    {topicAnalysis.is_fully_covered ? (
+                                                                        <span
+                                                                            className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-muted/80 text-muted-foreground border font-medium"
+                                                                            title={`Visto por todos los presentes: ${topicAnalysis.already_covered_students.map((s) => s.name).join(', ')}`}
+                                                                        >
+                                                                            <Check className="h-3 w-3 text-emerald-600" />
+                                                                            Visto por todos ({topicAnalysis.already_covered_count}/{suggestion?.present_students_count})
+                                                                        </span>
+                                                                    ) : topicAnalysis.is_all_ready ? (
+                                                                        <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-semibold">
+                                                                            <Sparkles className="h-3 w-3 text-emerald-600" />
+                                                                            Listo para todos
+                                                                        </span>
+                                                                    ) : topicAnalysis.already_covered_count > 0 ? (
+                                                                        <span
+                                                                            className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-medium"
+                                                                            title={`Visto por: ${topicAnalysis.already_covered_students.map((s) => s.name).join(', ')}`}
+                                                                        >
+                                                                            <Users className="h-3 w-3 text-amber-600" />
+                                                                            Visto por {topicAnalysis.already_covered_count}/{suggestion?.present_students_count}
+                                                                        </span>
+                                                                    ) : topicAnalysis.missing_prerequisites_count > 0 ? (
+                                                                        <span
+                                                                            className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20 font-medium"
+                                                                            title={`Faltan prerrequisitos para: ${topicAnalysis.missing_prerequisite_students.map((s) => s.name).join(', ')}`}
+                                                                        >
+                                                                            <AlertTriangle className="h-3 w-3 text-rose-600" />
+                                                                            Prerreq. pendientes ({topicAnalysis.missing_prerequisites_count})
+                                                                        </span>
+                                                                    ) : null}
+                                                                </div>
                                                             )}
                                                         </div>
+
                                                         {topic.unit_title && (
                                                             <span className="text-[10px] text-muted-foreground block">
                                                                 {topic.unit_title}
@@ -862,29 +1113,70 @@ export default function SessionCreate({ course, students, courseTopics, daySumma
                                                     </div>
                                                 </div>
 
+                                                {/* Subtopics with Coverage Indicators */}
                                                 {hasSubtopics && (
                                                     <div className="mt-2 ml-7 pl-3 border-l-2 border-border/60 space-y-1.5">
                                                         {topic.subtopics!.map((sub, sIdx) => {
                                                             const isSubSelected = selectedTopicIds.includes(sub.id);
+                                                            const subAnalysis = topicAnalysisMap[sub.id];
+
                                                             return (
                                                                 <label
                                                                     key={sub.id}
-                                                                    className={`flex items-center gap-2.5 py-1 px-2 rounded cursor-pointer transition-colors ${
+                                                                    className={`flex items-center justify-between gap-2.5 py-1 px-2 rounded cursor-pointer transition-colors ${
                                                                         isSubSelected ? 'bg-primary/10' : 'hover:bg-muted/40'
                                                                     }`}
                                                                 >
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={isSubSelected}
-                                                                        onChange={() => toggleTopic(sub.id)}
-                                                                        className="h-3.5 w-3.5 rounded text-primary border-muted-foreground cursor-pointer"
-                                                                    />
-                                                                    <span className="text-xs text-foreground">
-                                                                        <span className="text-muted-foreground font-mono text-[10px] mr-1.5">
-                                                                            {index + 1}.{sIdx + 1}
+                                                                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={isSubSelected}
+                                                                            onChange={() => toggleTopic(sub.id)}
+                                                                            className="h-3.5 w-3.5 rounded text-primary border-muted-foreground cursor-pointer shrink-0"
+                                                                        />
+                                                                        <span className="text-xs text-foreground truncate">
+                                                                            <span className="text-muted-foreground font-mono text-[10px] mr-1.5">
+                                                                                {index + 1}.{sIdx + 1}
+                                                                            </span>
+                                                                            {sub.title}
                                                                         </span>
-                                                                        {sub.title}
-                                                                    </span>
+                                                                    </div>
+
+                                                                    {/* Coverage Status Badge for Subtopic */}
+                                                                    {selectedStudentIds.length > 0 && subAnalysis && (
+                                                                        <div className="shrink-0 pl-2">
+                                                                            {subAnalysis.is_fully_covered ? (
+                                                                                <span
+                                                                                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-muted/80 text-muted-foreground border font-medium"
+                                                                                    title={`Visto por todos los presentes: ${subAnalysis.already_covered_students.map((s) => s.name).join(', ')}`}
+                                                                                >
+                                                                                    <Check className="h-3 w-3 text-emerald-600" />
+                                                                                    Visto por todos ({subAnalysis.already_covered_count}/{suggestion?.present_students_count})
+                                                                                </span>
+                                                                            ) : subAnalysis.is_all_ready ? (
+                                                                                <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-semibold">
+                                                                                    <Sparkles className="h-3 w-3 text-emerald-600" />
+                                                                                    Listo para todos
+                                                                                </span>
+                                                                            ) : subAnalysis.already_covered_count > 0 ? (
+                                                                                <span
+                                                                                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-medium"
+                                                                                    title={`Visto por: ${subAnalysis.already_covered_students.map((s) => s.name).join(', ')}`}
+                                                                                >
+                                                                                    <Users className="h-3 w-3 text-amber-600" />
+                                                                                    Visto por {subAnalysis.already_covered_count}/{suggestion?.present_students_count}
+                                                                                </span>
+                                                                            ) : subAnalysis.missing_prerequisites_count > 0 ? (
+                                                                                <span
+                                                                                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20 font-medium"
+                                                                                    title={`Faltan prerrequisitos para: ${subAnalysis.missing_prerequisite_students.map((s) => s.name).join(', ')}`}
+                                                                                >
+                                                                                    <AlertTriangle className="h-3 w-3 text-rose-600" />
+                                                                                    Prerreq. pendientes ({subAnalysis.missing_prerequisites_count})
+                                                                                </span>
+                                                                            ) : null}
+                                                                        </div>
+                                                                    )}
                                                                 </label>
                                                             );
                                                         })}

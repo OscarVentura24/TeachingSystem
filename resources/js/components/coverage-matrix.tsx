@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { router } from '@inertiajs/react';
-import { CheckCircle2, AlertTriangle, Circle, Search, Loader2, Lock } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Circle, Search, Loader2, Lock, ArrowUpDown } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import {
     Dialog,
     DialogContent,
@@ -57,6 +58,9 @@ export function CoverageMatrix({ courseId, students, topics, progressByStudent, 
     const [activeCell, setActiveCell] = useState<ActiveCell | null>(null);
     const [isUpdating, setIsUpdating] = useState(false);
 
+    const [studentSortBy, setStudentSortBy] = useState<'matricula' | 'name'>('matricula');
+    const [studentSortDir, setStudentSortDir] = useState<'asc' | 'desc'>('asc');
+
     const handleUpdateStatus = (status: 'explained' | 'needs_reinforcement' | 'pending') => {
         if (!courseId || !activeCell) return;
         setIsUpdating(true);
@@ -78,14 +82,43 @@ export function CoverageMatrix({ courseId, students, topics, progressByStudent, 
         );
     };
 
-    const filteredStudents = students.filter((s) => {
+    const toggleStudentSort = () => {
+        if (studentSortBy === 'matricula') {
+            if (studentSortDir === 'asc') setStudentSortDir('desc');
+            else { setStudentSortBy('name'); setStudentSortDir('asc'); }
+        } else {
+            if (studentSortDir === 'asc') setStudentSortDir('desc');
+            else { setStudentSortBy('matricula'); setStudentSortDir('asc'); }
+        }
+    };
+
+    const filteredAndSortedStudents = useMemo(() => {
         const query = search.toLowerCase();
-        return (
-            s.first_name.toLowerCase().includes(query) ||
-            s.last_name.toLowerCase().includes(query) ||
-            (s.student_id_number && s.student_id_number.toLowerCase().includes(query))
-        );
-    });
+        const filtered = students.filter((s) => {
+            return (
+                s.first_name.toLowerCase().includes(query) ||
+                s.last_name.toLowerCase().includes(query) ||
+                (s.student_id_number && s.student_id_number.toLowerCase().includes(query))
+            );
+        });
+
+        return [...filtered].sort((a, b) => {
+            if (studentSortBy === 'matricula') {
+                const matA = a.student_id_number || '';
+                const matB = b.student_id_number || '';
+                if (!matA && !matB) return 0;
+                if (!matA) return 1;
+                if (!matB) return -1;
+                const cmp = matA.localeCompare(matB, 'es', { numeric: true, sensitivity: 'base' });
+                return studentSortDir === 'asc' ? cmp : -cmp;
+            } else {
+                const nameA = `${a.last_name} ${a.first_name}`.trim();
+                const nameB = `${b.last_name} ${b.first_name}`.trim();
+                const cmp = nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
+                return studentSortDir === 'asc' ? cmp : -cmp;
+            }
+        });
+    }, [students, search, studentSortBy, studentSortDir]);
 
     if (topics.length === 0) {
         return (
@@ -149,15 +182,28 @@ export function CoverageMatrix({ courseId, students, topics, progressByStudent, 
     return (
         <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="relative max-w-sm flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <input
-                        type="text"
-                        placeholder="Filtrar estudiante..."
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className="w-full pl-9 pr-4 py-1.5 text-sm bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    />
+                <div className="flex items-center gap-2 max-w-md flex-1">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <input
+                            type="text"
+                            placeholder="Filtrar estudiante..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            className="w-full pl-9 pr-4 py-1.5 text-sm bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        />
+                    </div>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={toggleStudentSort}
+                        className="text-xs h-8 px-2.5 gap-1.5 shrink-0"
+                        title={`Ordenar lista por ${studentSortBy === 'matricula' ? 'Nombre' : 'Matrícula'} (${studentSortDir === 'asc' ? 'Ascendente' : 'Descendente'})`}
+                    >
+                        <ArrowUpDown className="h-3.5 w-3.5 text-primary" />
+                        <span>{studentSortBy === 'matricula' ? 'Por Matrícula' : 'Por Nombre'}</span>
+                    </Button>
                 </div>
                 <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
                     {courseId && !readOnly && (
@@ -186,8 +232,15 @@ export function CoverageMatrix({ courseId, students, topics, progressByStudent, 
                 <table className="w-full text-left text-xs border-collapse">
                     <thead className="sticky top-0 z-20 bg-muted/90 backdrop-blur border-b">
                         <tr>
-                            <th className="sticky left-0 z-30 bg-muted/95 backdrop-blur px-4 py-3 font-semibold text-foreground min-w-[200px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                Estudiante ({filteredStudents.length})
+                            <th
+                                className="sticky left-0 z-30 bg-muted/95 backdrop-blur px-4 py-3 font-semibold text-foreground min-w-[200px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] cursor-pointer hover:bg-muted select-none"
+                                onClick={toggleStudentSort}
+                                title="Clic para alternar orden por Matrícula / Nombre"
+                            >
+                                <div className="flex items-center justify-between gap-1.5">
+                                    <span>Estudiante ({filteredAndSortedStudents.length})</span>
+                                    <ArrowUpDown className="h-3.5 w-3.5 text-primary shrink-0" />
+                                </div>
                             </th>
                             <th className="px-3 py-3 font-medium text-center text-muted-foreground min-w-[80px]">
                                 % Avance
@@ -216,7 +269,7 @@ export function CoverageMatrix({ courseId, students, topics, progressByStudent, 
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                        {filteredStudents.map((student) => {
+                        {filteredAndSortedStudents.map((student) => {
                             const studentRecords = progressByStudent[student.id] || [];
                             const completedCount = studentRecords.filter((r) => evaluableIdSet.has(r.course_topic_id) && r.coverage_status === 'explained').length;
                             const percentage = evaluableTopics.length > 0 ? Math.round((completedCount / evaluableTopics.length) * 100) : 0;
