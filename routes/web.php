@@ -29,7 +29,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/courses/{course}/clone-pensum', [CourseController::class, 'showClonePensum'])->name('courses.pensum.clone-view');
     Route::post('/courses/{course}/clone-pensum', [CourseController::class, 'clonePensum'])->name('courses.pensum.clone');
     Route::post('/courses/{course}/progress', [CourseController::class, 'updateStudentProgress'])->name('courses.progress.update');
+    Route::get('/courses/{course}/assessments/create', [AssessmentController::class, 'create'])->name('courses.assessments.create');
     Route::post('/courses/{course}/assessments', [AssessmentController::class, 'store'])->name('courses.assessments.store');
+    Route::get('/courses/{course}/assessments/{assessment}/edit', [AssessmentController::class, 'edit'])->name('courses.assessments.edit');
     Route::put('/courses/{course}/assessments/{assessment}', [AssessmentController::class, 'update'])->name('courses.assessments.update');
     Route::delete('/courses/{course}/assessments/{assessment}', [AssessmentController::class, 'destroy'])->name('courses.assessments.destroy');
     Route::post('/courses/{course}/assessments/{assessment}/scores', [AssessmentController::class, 'saveScores'])->name('courses.assessments.scores');

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { router, useForm } from '@inertiajs/react';
+import { router, Link } from '@inertiajs/react';
 import {
     Award,
     Plus,
@@ -78,81 +78,13 @@ interface Props {
 export function CourseAssessments({ courseId, assessments, students, courseTopics, readOnly = false }: Props) {
     const [viewMode, setViewMode] = useState<'gradebook' | 'list'>('gradebook');
     const [searchStudent, setSearchStudent] = useState('');
-    const [openAssessmentDialog, setOpenAssessmentDialog] = useState(false);
-    const [editingAssessment, setEditingAssessment] = useState<Assessment | null>(null);
     const [openGradingDialog, setOpenGradingDialog] = useState(false);
     const [gradingAssessment, setGradingAssessment] = useState<Assessment | null>(null);
     const [deleteAssessmentConfirm, setDeleteAssessmentConfirm] = useState<Assessment | null>(null);
 
-    // Form for creating/editing assessment
-    const assessmentForm = useForm({
-        title: '',
-        description: '',
-        assessment_type: 'exam',
-        assessment_date: new Date().toISOString().split('T')[0],
-        max_score: 100,
-        passing_score: 70,
-        weight_percentage: '',
-        auto_sync_mastery: true,
-        topic_ids: [] as number[],
-    });
-
     // Form for grading
     const [gradingScores, setGradingScores] = useState<Record<number, { score: string; status: 'present' | 'absent' | 'excused'; feedback: string }>>({});
     const [isSavingScores, setIsSavingScores] = useState(false);
-
-    // Open create dialog
-    const handleOpenCreate = () => {
-        setEditingAssessment(null);
-        assessmentForm.reset();
-        assessmentForm.setData({
-            title: '',
-            description: '',
-            assessment_type: 'exam',
-            assessment_date: new Date().toISOString().split('T')[0],
-            max_score: 100,
-            passing_score: 70,
-            weight_percentage: '',
-            auto_sync_mastery: true,
-            topic_ids: [],
-        });
-        setOpenAssessmentDialog(true);
-    };
-
-    // Open edit dialog
-    const handleOpenEdit = (assessment: Assessment) => {
-        setEditingAssessment(assessment);
-        const dateStr = assessment.assessment_date.includes('T')
-            ? assessment.assessment_date.split('T')[0]
-            : assessment.assessment_date;
-
-        assessmentForm.setData({
-            title: assessment.title,
-            description: assessment.description || '',
-            assessment_type: assessment.assessment_type,
-            assessment_date: dateStr,
-            max_score: Number(assessment.max_score),
-            passing_score: Number(assessment.passing_score),
-            weight_percentage: assessment.weight_percentage ? String(assessment.weight_percentage) : '',
-            auto_sync_mastery: assessment.auto_sync_mastery,
-            topic_ids: assessment.topics ? assessment.topics.map((t) => t.id) : [],
-        });
-        setOpenAssessmentDialog(true);
-    };
-
-    // Submit assessment form
-    const handleSubmitAssessment = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (editingAssessment) {
-            assessmentForm.put(`/courses/${courseId}/assessments/${editingAssessment.id}`, {
-                onSuccess: () => setOpenAssessmentDialog(false),
-            });
-        } else {
-            assessmentForm.post(`/courses/${courseId}/assessments`, {
-                onSuccess: () => setOpenAssessmentDialog(false),
-            });
-        }
-    };
 
     // Open grading dialog
     const handleOpenGrading = (assessment: Assessment) => {
@@ -210,20 +142,6 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
             onSuccess: () => setDeleteAssessmentConfirm(null),
         });
     };
-
-    // Flatten course topics
-    const flatTopics = useMemo(() => {
-        const list: Array<{ id: number; title: string; parentTitle?: string }> = [];
-        courseTopics.forEach((t) => {
-            list.push({ id: t.id, title: t.title });
-            if (t.subtopics) {
-                t.subtopics.forEach((sub) => {
-                    list.push({ id: sub.id, title: sub.title, parentTitle: t.title });
-                });
-            }
-        });
-        return list;
-    }, [courseTopics]);
 
     // Filter students for gradebook
     const filteredStudents = useMemo(() => {
@@ -365,9 +283,11 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
                             <Award className="h-3.5 w-3.5" /> Modo de solo lectura
                         </span>
                     ) : (
-                        <Button onClick={handleOpenCreate} size="sm" className="gap-1.5 text-xs">
-                            <Plus className="h-3.5 w-3.5" /> Nueva Evaluación
-                        </Button>
+                        <Link href={`/courses/${courseId}/assessments/create`}>
+                            <Button size="sm" className="gap-1.5 text-xs">
+                                <Plus className="h-3.5 w-3.5" /> Nueva Evaluación
+                            </Button>
+                        </Link>
                     )}
                 </div>
             </div>
@@ -543,9 +463,13 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
                     {assessments.length === 0 ? (
                         <div className="p-8 rounded-xl border border-dashed text-center text-muted-foreground space-y-2">
                             <p className="text-sm font-medium">No hay evaluaciones registradas.</p>
-                            <Button onClick={handleOpenCreate} size="sm" variant="outline" className="text-xs">
-                                <Plus className="h-3.5 w-3.5 mr-1" /> Crear Primera Evaluación
-                            </Button>
+                            {!readOnly && (
+                                <Link href={`/courses/${courseId}/assessments/create`}>
+                                    <Button size="sm" variant="outline" className="text-xs">
+                                        <Plus className="h-3.5 w-3.5 mr-1" /> Crear Primera Evaluación
+                                    </Button>
+                                </Link>
+                            )}
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -569,15 +493,16 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
                                             </div>
                                             {!readOnly && (
                                                 <div className="flex items-center gap-1 shrink-0">
-                                                    <Button
-                                                        size="icon"
-                                                        variant="ghost"
-                                                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                                                        onClick={() => handleOpenEdit(ass)}
-                                                        title="Editar evaluación"
-                                                    >
-                                                        <Edit2 className="h-3.5 w-3.5" />
-                                                    </Button>
+                                                    <Link href={`/courses/${courseId}/assessments/${ass.id}/edit`}>
+                                                        <Button
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                                            title="Editar evaluación"
+                                                        >
+                                                            <Edit2 className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </Link>
                                                     <Button
                                                         size="icon"
                                                         variant="ghost"
@@ -644,172 +569,6 @@ export function CourseAssessments({ courseId, assessments, students, courseTopic
                     )}
                 </div>
             )}
-
-            {/* Modal: Create/Edit Assessment */}
-            <Dialog open={openAssessmentDialog} onOpenChange={setOpenAssessmentDialog}>
-                <DialogContent className="max-w-lg">
-                    <form onSubmit={handleSubmitAssessment}>
-                        <DialogHeader>
-                            <DialogTitle className="text-base font-semibold">
-                                {editingAssessment ? 'Editar Evaluación' : 'Nueva Evaluación'}
-                            </DialogTitle>
-                            <DialogDescription className="text-xs">
-                                Configura los parámetros de la prueba y asocia los temas del pensum que serán evaluados.
-                            </DialogDescription>
-                        </DialogHeader>
-
-                        <div className="space-y-4 py-4 text-xs">
-                            <div className="space-y-1.5">
-                                <Label htmlFor="ass_title">Título de la Evaluación</Label>
-                                <Input
-                                    id="ass_title"
-                                    placeholder="Ej: Examen Parcial de Hardware o Práctica 1"
-                                    value={assessmentForm.data.title}
-                                    onChange={(e) => assessmentForm.setData('title', e.target.value)}
-                                    required
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="ass_type">Tipo de Prueba</Label>
-                                    <select
-                                        id="ass_type"
-                                        value={assessmentForm.data.assessment_type}
-                                        onChange={(e) => assessmentForm.setData('assessment_type', e.target.value as any)}
-                                        className="w-full px-3 py-2 rounded-md border bg-background text-xs"
-                                    >
-                                        <option value="exam">Examen Teórico</option>
-                                        <option value="practical">Prueba Práctica (Lab)</option>
-                                        <option value="project">Proyecto / Tarea</option>
-                                        <option value="quiz">Quiz / Control Corto</option>
-                                    </select>
-                                </div>
-
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="ass_date">Fecha de Ejecución</Label>
-                                    <Input
-                                        id="ass_date"
-                                        type="date"
-                                        value={assessmentForm.data.assessment_date}
-                                        onChange={(e) => assessmentForm.setData('assessment_date', e.target.value)}
-                                        required
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-3 gap-3">
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="ass_max">Nota Máxima</Label>
-                                    <Input
-                                        id="ass_max"
-                                        type="number"
-                                        min="1"
-                                        max="999"
-                                        step="0.5"
-                                        value={assessmentForm.data.max_score}
-                                        onChange={(e) => assessmentForm.setData('max_score', Number(e.target.value))}
-                                        required
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="ass_pass">Nota Aprobatoria</Label>
-                                    <Input
-                                        id="ass_pass"
-                                        type="number"
-                                        min="0"
-                                        max={assessmentForm.data.max_score}
-                                        step="0.5"
-                                        value={assessmentForm.data.passing_score}
-                                        onChange={(e) => assessmentForm.setData('passing_score', Number(e.target.value))}
-                                        required
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="ass_weight">Ponderación (%)</Label>
-                                    <Input
-                                        id="ass_weight"
-                                        type="number"
-                                        min="0"
-                                        max="100"
-                                        placeholder="Opcional"
-                                        value={assessmentForm.data.weight_percentage}
-                                        onChange={(e) => assessmentForm.setData('weight_percentage', e.target.value)}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Auto Sync Checkbox */}
-                            <label className="flex items-start gap-2.5 p-2.5 rounded-lg border bg-muted/30 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={assessmentForm.data.auto_sync_mastery}
-                                    onChange={(e) => assessmentForm.setData('auto_sync_mastery', e.target.checked)}
-                                    className="mt-0.5 rounded text-primary"
-                                />
-                                <div>
-                                    <span className="font-semibold block text-foreground">
-                                        Sincronizar automáticamente el progreso pedagógico
-                                    </span>
-                                    <span className="text-[11px] text-muted-foreground block">
-                                        Si el alumno aprueba (&ge; {assessmentForm.data.passing_score}), el tema se acredita. Si reprueba, pasa automáticamente a <strong>Refuerzo</strong> en la matriz.
-                                    </span>
-                                </div>
-                            </label>
-
-                            {/* Topics Selection */}
-                            <div className="space-y-2">
-                                <Label>Temas del Pensum Evaluados</Label>
-                                {flatTopics.length === 0 ? (
-                                    <p className="text-muted-foreground text-[11px]">El curso aún no tiene temas agregados en el pensum.</p>
-                                ) : (
-                                    <div className="max-h-36 overflow-y-auto border rounded-lg p-2 space-y-1 divide-y divide-border/40">
-                                        {flatTopics.map((top) => {
-                                            const isChecked = assessmentForm.data.topic_ids.includes(top.id);
-                                            return (
-                                                <label
-                                                    key={top.id}
-                                                    className="flex items-center gap-2 py-1 px-1 cursor-pointer hover:bg-muted/40 rounded text-xs"
-                                                >
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={isChecked}
-                                                        onChange={() => {
-                                                            const current = assessmentForm.data.topic_ids;
-                                                            assessmentForm.setData(
-                                                                'topic_ids',
-                                                                isChecked
-                                                                    ? current.filter((id) => id !== top.id)
-                                                                    : [...current, top.id]
-                                                            );
-                                                        }}
-                                                        className="rounded text-primary"
-                                                    />
-                                                    <span className="truncate">
-                                                        {top.parentTitle && (
-                                                            <span className="text-[10px] text-muted-foreground mr-1">({top.parentTitle})</span>
-                                                        )}
-                                                        {top.title}
-                                                    </span>
-                                                </label>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <DialogFooter>
-                            <Button type="button" variant="outline" size="sm" onClick={() => setOpenAssessmentDialog(false)}>
-                                Cancelar
-                            </Button>
-                            <Button type="submit" size="sm" disabled={assessmentForm.processing}>
-                                {editingAssessment ? 'Guardar Cambios' : 'Crear Evaluación'}
-                            </Button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
 
             {/* Modal: Bulk Grading Dialog */}
             <Dialog open={openGradingDialog} onOpenChange={setOpenGradingDialog}>

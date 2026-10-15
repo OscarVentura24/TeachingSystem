@@ -10,12 +10,90 @@ use App\Services\AssessmentMasterySyncService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class AssessmentController extends Controller
 {
     public function __construct(
         protected AssessmentMasterySyncService $syncService
     ) {}
+
+    /**
+     * Show form to create a new assessment.
+     */
+    public function create(Request $request, Course $course): Response
+    {
+        if ($course->isReadOnly()) {
+            abort(403, 'No se pueden crear evaluaciones en un curso archivado o perteneciente a un período escolar cerrado.');
+        }
+
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para gestionar evaluaciones en este curso.');
+        }
+
+        $course->load([
+            'institution:id,name',
+            'academicPeriod:id,name,is_current,is_closed',
+            'students' => function ($q) {
+                $q->wherePivotIn('status', ['active', 'repeated']);
+            },
+            'courseTopics' => function ($query) {
+                $query->whereNull('parent_id')
+                    ->orderBy('sort_order')
+                    ->with(['subtopics' => function ($sq) {
+                        $sq->orderBy('sort_order');
+                    }]);
+            },
+        ]);
+
+        return Inertia::render('assessments/create', [
+            'course' => $course,
+            'courseTopics' => $course->courseTopics,
+        ]);
+    }
+
+    /**
+     * Show form to edit an existing assessment.
+     */
+    public function edit(Request $request, Course $course, Assessment $assessment): Response
+    {
+        if ($course->isReadOnly()) {
+            abort(403, 'No se pueden modificar evaluaciones en un curso archivado o perteneciente a un período escolar cerrado.');
+        }
+
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para gestionar evaluaciones en este curso.');
+        }
+
+        if ($assessment->course_id !== $course->id) {
+            abort(404);
+        }
+
+        $course->load([
+            'institution:id,name',
+            'academicPeriod:id,name,is_current,is_closed',
+            'students' => function ($q) {
+                $q->wherePivotIn('status', ['active', 'repeated']);
+            },
+            'courseTopics' => function ($query) {
+                $query->whereNull('parent_id')
+                    ->orderBy('sort_order')
+                    ->with(['subtopics' => function ($sq) {
+                        $sq->orderBy('sort_order');
+                    }]);
+            },
+        ]);
+
+        $assessment->load('topics:id,title');
+
+        return Inertia::render('assessments/edit', [
+            'course' => $course,
+            'assessment' => $assessment,
+            'courseTopics' => $course->courseTopics,
+            'selectedTopicIds' => $assessment->topics->pluck('id')->toArray(),
+        ]);
+    }
 
     /**
      * Store a new assessment for a course.
@@ -66,7 +144,8 @@ class AssessmentController extends Controller
             }
         });
 
-        return back()->with('success', 'Evaluación creada exitosamente.');
+        return redirect()->route('courses.show', ['course' => $course->id, 'tab' => 'grades'])
+            ->with('success', 'Evaluación creada exitosamente.');
     }
 
     /**
@@ -124,7 +203,8 @@ class AssessmentController extends Controller
             }
         });
 
-        return back()->with('success', 'Evaluación actualizada exitosamente.');
+        return redirect()->route('courses.show', ['course' => $course->id, 'tab' => 'grades'])
+            ->with('success', 'Evaluación actualizada exitosamente.');
     }
 
     /**

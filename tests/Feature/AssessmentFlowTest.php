@@ -212,3 +212,38 @@ test('unauthorized user cannot create assessments in course', function () {
 
     $response->assertForbidden();
 });
+
+test('teacher can view the assessment create page', function () {
+    $response = $this->actingAs($this->user)->get("/courses/{$this->course->id}/assessments/create");
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->component('assessments/create')
+        ->has('course')
+        ->has('courseTopics')
+    );
+});
+
+test('teacher can view the assessment edit page', function () {
+    $assessment = Assessment::create([
+        'course_id' => $this->course->id,
+        'created_by_user_id' => $this->user->id,
+        'title' => 'Quiz Inicial',
+        'assessment_type' => 'quiz',
+        'assessment_date' => '2026-10-15',
+        'max_score' => 20,
+        'passing_score' => 14,
+    ]);
+    $assessment->topics()->attach($this->topic->id);
+
+    $response = $this->actingAs($this->user)->get("/courses/{$this->course->id}/assessments/{$assessment->id}/edit");
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->component('assessments/edit')
+        ->has('course')
+        ->has('assessment')
+        ->has('courseTopics')
+    );
+});
+
