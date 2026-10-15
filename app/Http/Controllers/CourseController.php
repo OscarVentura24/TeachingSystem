@@ -211,7 +211,10 @@ class CourseController extends Controller
         $canManageTeachers = $request->user()->isInstitutionAdmin($course->institution_id) ||
             $course->teachers()->where('users.id', $request->user()->id)->wherePivot('is_primary', true)->exists();
 
-        $candidateSourceCourses = $this->pensumDuplicationService->getCandidateSourceCourses($course, $request->user());
+        $hasCandidateCourses = Course::where('institution_id', $course->institution_id)
+            ->where('id', '!=', $course->id)
+            ->whereHas('courseTopics')
+            ->exists();
 
         return Inertia::render('courses/show', [
             'course' => $course,
@@ -220,6 +223,35 @@ class CourseController extends Controller
             'availableTeachers' => $availableTeachers,
             'institutionStudents' => $institutionStudents,
             'canManageTeachers' => $canManageTeachers,
+            'hasCandidateCourses' => $hasCandidateCourses,
+        ]);
+    }
+
+    /**
+     * Display the dedicated full-page screen to clone or merge pensum from another course.
+     */
+    public function showClonePensum(Request $request, Course $course): Response
+    {
+        $this->ensureCourseNotReadOnly($course);
+
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para modificar el pensum de este curso.');
+        }
+
+        $course->load([
+            'institution:id,name',
+            'academicPeriod:id,name,is_current,is_closed',
+            'courseTopics' => function ($query) {
+                $query->whereNull('parent_id')
+                    ->orderBy('sort_order')
+                    ->with('subtopics');
+            },
+        ]);
+
+        $candidateSourceCourses = $this->pensumDuplicationService->getCandidateSourceCourses($course, $request->user());
+
+        return Inertia::render('courses/clone-pensum', [
+            'course' => $course,
             'candidateSourceCourses' => $candidateSourceCourses,
         ]);
     }
@@ -258,7 +290,7 @@ class CourseController extends Controller
             $msg .= " ({$result['skipped_duplicates']} temas omitidos por estar ya presentes).";
         }
 
-        return back()->with('success', $msg);
+        return redirect()->route('courses.show', ['course' => $course->id, 'tab' => 'pensum'])->with('success', $msg);
     }
 
     /**

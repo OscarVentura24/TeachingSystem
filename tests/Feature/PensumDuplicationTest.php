@@ -221,3 +221,31 @@ test('cannot duplicate pensum into a read-only closed course', function () {
 
     $response->assertForbidden();
 });
+
+test('teacher can access the dedicated clone pensum page', function () {
+    $response = $this->actingAs($this->teacher)
+        ->get(route('courses.pensum.clone-view', $this->targetCourse));
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->component('courses/clone-pensum')
+        ->has('course')
+        ->has('candidateSourceCourses')
+    );
+});
+
+test('cannot access clone pensum page for a read-only closed course', function () {
+    $closedCourse = Course::create([
+        'institution_id' => $this->institution->id,
+        'academic_period_id' => $this->period2025->id, // period is closed
+        'name' => 'Curso Cerrado',
+        'status' => 'archived',
+    ]);
+    $closedCourse->teachers()->attach($this->teacher->id);
+
+    $response = $this->actingAs($this->teacher)
+        ->get(route('courses.pensum.clone-view', $closedCourse));
+
+    $response->assertForbidden();
+});
+

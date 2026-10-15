@@ -35,7 +35,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CoverageMatrix } from '@/components/coverage-matrix';
 import { CourseAssessments } from '@/components/course-assessments';
-import { ClonePensumDialog, CandidateCourseItem } from '@/components/clone-pensum-dialog';
 import {
     Dialog,
     DialogContent,
@@ -145,7 +144,7 @@ interface Props {
     availableTeachers?: Array<{ id: number; name: string; email: string }>;
     institutionStudents?: InstitutionStudentItem[];
     canManageTeachers?: boolean;
-    candidateSourceCourses?: CandidateCourseItem[];
+    hasCandidateCourses?: boolean;
 }
 
 export default function CourseShow({
@@ -155,13 +154,12 @@ export default function CourseShow({
     availableTeachers = [],
     institutionStudents = [],
     canManageTeachers = false,
-    candidateSourceCourses = [],
+    hasCandidateCourses = false,
 }: Props) {
     const isReadOnly = Boolean(course.is_read_only || course.status === 'archived' || course.academic_period?.is_closed);
     const [activeTab, setActiveTab] = useState<'matrix' | 'pensum' | 'students' | 'sessions' | 'teachers' | 'grades'>('matrix');
     const [openAddTopicDialog, setOpenAddTopicDialog] = useState(false);
     const [openBulkImportDialog, setOpenBulkImportDialog] = useState(false);
-    const [openClonePensumDialog, setOpenClonePensumDialog] = useState(false);
     const [selectedBulkTopicIds, setSelectedBulkTopicIds] = useState<number[]>([]);
     const [bulkSearchQuery, setBulkSearchQuery] = useState('');
     const [isBulkImporting, setIsBulkImporting] = useState(false);
@@ -752,16 +750,17 @@ export default function CourseShow({
                                             </Button>
                                         )}
 
-                                        {candidateSourceCourses.length > 0 && (
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="gap-2 border-indigo-500/30 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
-                                                onClick={() => setOpenClonePensumDialog(true)}
-                                                title="Duplicar o fusionar la estructura de temas de otro curso existente"
-                                            >
-                                                <Copy className="h-4 w-4" /> Duplicar Pensum
-                                            </Button>
+                                        {hasCandidateCourses && (
+                                            <Link href={`/courses/${course.id}/clone-pensum`}>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="gap-2 border-indigo-500/30 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
+                                                    title="Duplicar o fusionar la estructura de temas de otro curso existente"
+                                                >
+                                                    <Copy className="h-4 w-4" /> Duplicar Pensum
+                                                </Button>
+                                            </Link>
                                         )}
 
                                         <Dialog open={openAddTopicDialog} onOpenChange={setOpenAddTopicDialog}>
@@ -1056,14 +1055,15 @@ export default function CourseShow({
                         <p>No hay temas agregados al pensum todavía.</p>
                         {!isReadOnly && (
                             <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
-                                {candidateSourceCourses.length > 0 && (
-                                    <Button
-                                        size="sm"
-                                        className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs"
-                                        onClick={() => setOpenClonePensumDialog(true)}
-                                    >
-                                        <Sparkles className="h-4 w-4" /> Clonar Pensum de Otro Curso
-                                    </Button>
+                                {hasCandidateCourses && (
+                                    <Link href={`/courses/${course.id}/clone-pensum`}>
+                                        <Button
+                                            size="sm"
+                                            className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs"
+                                        >
+                                            <Sparkles className="h-4 w-4" /> Clonar Pensum de Otro Curso
+                                        </Button>
+                                    </Link>
                                 )}
                                 {availableGlobalTopics.length > 0 && (
                                     <Button
@@ -1810,14 +1810,6 @@ export default function CourseShow({
                         readOnly={isReadOnly}
                     />
                 )}
-
-                {/* Clone Pensum Dialog */}
-                <ClonePensumDialog
-                    open={openClonePensumDialog}
-                    onOpenChange={setOpenClonePensumDialog}
-                    currentCourse={course}
-                    candidateCourses={candidateSourceCourses}
-                />
 
                 {/* Custom Confirmation Dialog */}
                 <ConfirmDialogComponent />
