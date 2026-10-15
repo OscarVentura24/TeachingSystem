@@ -12,6 +12,8 @@ import {
     Save,
     Play,
     Ban,
+    Clock,
+    CalendarDays,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -57,6 +59,10 @@ interface ProgressRecord {
 interface SessionData {
     id: number;
     session_date: string;
+    start_time?: string | null;
+    end_time?: string | null;
+    duration_minutes?: number | null;
+    formatted_time_range?: string | null;
     title?: string;
     notes?: string;
     status: 'draft' | 'completed' | 'cancelled';
@@ -85,14 +91,61 @@ interface SuggestionResult {
     } | null;
 }
 
+interface StudentAttendanceRecord {
+    session_id: number;
+    title: string;
+    start_time?: string | null;
+    end_time?: string | null;
+    duration_minutes?: number | null;
+    formatted_time_range?: string | null;
+    status: string;
+}
+
+interface DaySessionItem {
+    id: number;
+    title: string;
+    start_time?: string | null;
+    end_time?: string | null;
+    duration_minutes?: number | null;
+    formatted_time_range?: string | null;
+    status: string;
+    student_count: number;
+}
+
+interface DaySummary {
+    date: string;
+    sessions_count: number;
+    attended_student_ids: number[];
+    student_attendance_map: Record<number, StudentAttendanceRecord[]>;
+    sessions: DaySessionItem[];
+}
+
 interface Props {
     course: Course;
     session: SessionData;
     students: Student[];
     courseTopics: CourseTopic[];
+    daySummary?: DaySummary;
 }
 
-export default function SessionEdit({ course, session, students, courseTopics }: Props) {
+function addMinutesToTime(timeStr: string, minutesToAdd: number): string {
+    const [h, m] = timeStr.split(':').map(Number);
+    if (isNaN(h) || isNaN(m)) return '';
+    const totalMinutes = (h * 60 + m + minutesToAdd) % (24 * 60);
+    const newH = Math.floor(totalMinutes / 60);
+    const newM = totalMinutes % 60;
+    return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+}
+
+function diffMinutes(startStr: string, endStr: string): number {
+    const [h1, m1] = startStr.split(':').map(Number);
+    const [h2, m2] = endStr.split(':').map(Number);
+    if (isNaN(h1) || isNaN(m1) || isNaN(h2) || isNaN(m2)) return 0;
+    const diff = h2 * 60 + m2 - (h1 * 60 + m1);
+    return diff > 0 ? diff : 0;
+}
+
+export default function SessionEdit({ course, session, students, courseTopics, daySummary: initialDaySummary }: Props) {
     const formattedDate = session.session_date.includes('T')
         ? session.session_date.split('T')[0]
         : session.session_date;
@@ -136,6 +189,19 @@ export default function SessionEdit({ course, session, students, courseTopics }:
     const [suggestion, setSuggestion] = useState<SuggestionResult | null>(null);
     const [loadingSuggestion, setLoadingSuggestion] = useState(false);
 
+    // Day sessions & attendance detection state (excluding this session)
+    const [daySummary, setDaySummary] = useState<DaySummary>(
+        initialDaySummary || {
+            date: formattedDate,
+            sessions_count: 0,
+            attended_student_ids: [],
+            student_attendance_map: {},
+            sessions: [],
+        }
+    );
+    const [loadingDaySummary, setLoadingDaySummary] = useState(false);
+    const [studentFilter, setStudentFilter] = useState<'all' | 'pending' | 'attended'>('all');
+
     // Live suggestion fetch when selectedStudentIds changes
     useEffect(() => {
         if (selectedStudentIds.length === 0) {
@@ -172,12 +238,79 @@ export default function SessionEdit({ course, session, students, courseTopics }:
 
     const { data, setData, put, processing, errors } = useForm({
         session_date: formattedDate,
+        start_time: session.start_time ? session.start_time.slice(0, 5) : '',
+        end_time: session.end_time ? session.end_time.slice(0, 5) : '',
+        duration_minutes: (session.duration_minutes ?? '') as number | '',
         title: session.title || '',
         notes: session.notes || '',
-        status: session.status,
+        status: session.status || 'completed',
         topic_ids: session.topics.map((t) => t.id),
-        attendances: [] as Array<{ student_id: number; workstation?: string }>,
+        attendances: session.attendances.map((a) => ({
+            student_id: a.student_id,
+            workstation: a.workstation || undefined,
+        })),
     });
+
+    const handleDateChange = (newDate: string) => {
+        setData('session_date', newDate);
+        if (!newDate) return;
+
+        setLoadingDaySummary(true);
+        fetch(`/courses/${course.id}/sessions/date-summary?date=${newDate}&exclude_session_id=${session.id}`, {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        })
+            .then((res) => res.json())
+            .then((summary: DaySummary) => {
+                setDaySummary(summary);
+                setLoadingDaySummary(false);
+            })
+            .catch(() => {
+                setLoadingDaySummary(false);
+            });
+    };
+
+    const handleStartTimeChange = (time: string) => {
+        setData((prev) => {
+            const updated = { ...prev, start_time: time };
+            if (time && prev.duration_minutes) {
+                updated.end_time = addMinutesToTime(time, Number(prev.duration_minutes));
+            } else if (time && prev.end_time) {
+                const diff = diffMinutes(time, prev.end_time);
+                if (diff > 0) updated.duration_minutes = diff;
+            }
+            return updated;
+        });
+    };
+
+    const handleDurationChange = (minutes: number | '') => {
+        setData((prev) => {
+            const updated = { ...prev, duration_minutes: minutes };
+            if (prev.start_time && minutes) {
+                updated.end_time = addMinutesToTime(prev.start_time, Number(minutes));
+            }
+            return updated;
+        });
+    };
+
+    const handleEndTimeChange = (time: string) => {
+        setData((prev) => {
+            const updated = { ...prev, end_time: time };
+            if (prev.start_time && time) {
+                const diff = diffMinutes(prev.start_time, time);
+                if (diff > 0) updated.duration_minutes = diff;
+            }
+            return updated;
+        });
+    };
+
+    const setCurrentTime = () => {
+        const now = new Date();
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        handleStartTimeChange(`${hours}:${minutes}`);
+    };
 
     const toggleStudent = (id: number) => {
         setSelectedStudentIds((prev) =>
@@ -185,8 +318,16 @@ export default function SessionEdit({ course, session, students, courseTopics }:
         );
     };
 
-    const selectAllStudents = () => {
-        setSelectedStudentIds(students.map((s) => s.id));
+    const selectAllVisibleStudents = () => {
+        const visibleIds = filteredStudents.map((s) => s.id);
+        setSelectedStudentIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
+    };
+
+    const selectOnlyPendingStudents = () => {
+        const pendingIds = students
+            .filter((s) => !daySummary.attended_student_ids.includes(s.id))
+            .map((s) => s.id);
+        setSelectedStudentIds(pendingIds);
     };
 
     const clearStudents = () => {
@@ -248,6 +389,9 @@ export default function SessionEdit({ course, session, students, courseTopics }:
 
         router.put(`/courses/${course.id}/sessions/${session.id}`, {
             session_date: data.session_date,
+            start_time: data.start_time || undefined,
+            end_time: data.end_time || undefined,
+            duration_minutes: data.duration_minutes ? Number(data.duration_minutes) : undefined,
             title: data.title,
             notes: data.notes,
             status: newStatus,
@@ -257,9 +401,20 @@ export default function SessionEdit({ course, session, students, courseTopics }:
         });
     };
 
+    // Filter students: in other sessions today vs pending
+    const otherAttendedCount = students.filter((s) => daySummary.attended_student_ids.includes(s.id)).length;
+    const pendingCount = students.length - otherAttendedCount;
+
+    const filteredStudents = students.filter((s) => {
+        const alreadyInOtherSession = daySummary.attended_student_ids.includes(s.id);
+        if (studentFilter === 'pending') return !alreadyInOtherSession;
+        if (studentFilter === 'attended') return alreadyInOtherSession;
+        return true;
+    });
+
     return (
         <>
-            <Head title={`Editar Sesión #${session.id} - ${course.name}`} />
+            <Head title={`Editar Sesión - ${course.name}`} />
 
             <div className="flex flex-1 flex-col gap-6 p-6 max-w-5xl mx-auto w-full">
                 {/* Header */}
@@ -277,74 +432,299 @@ export default function SessionEdit({ course, session, students, courseTopics }:
                             </h1>
                         </div>
                     </div>
+
+                    <div className="flex items-center gap-2">
+                        <span
+                            className={`px-2.5 py-1 text-xs font-semibold rounded-md border ${
+                                session.status === 'completed'
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
+                                    : session.status === 'draft'
+                                    ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
+                                    : 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800'
+                            }`}
+                        >
+                            Estado actual: {session.status === 'completed' ? 'Completada' : session.status === 'draft' ? 'Borrador' : 'Cancelada'}
+                        </span>
+                    </div>
                 </div>
 
-                {/* Session Meta */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-card border p-4 rounded-xl shadow-sm">
-                    <div className="space-y-1.5">
-                        <Label htmlFor="session_date">Fecha de la Sesión *</Label>
-                        <Input
-                            id="session_date"
-                            type="date"
-                            value={data.session_date}
-                            onChange={(e) => setData('session_date', e.target.value)}
-                            required
-                        />
+                {/* Session Meta Card: Date, Title, Start Time, Duration & End Time */}
+                <div className="bg-card border p-5 rounded-xl shadow-xs space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="space-y-1.5">
+                            <Label htmlFor="session_date" className="flex items-center gap-1.5 font-semibold">
+                                <CalendarDays className="h-3.5 w-3.5 text-primary" /> Fecha de la Sesión *
+                            </Label>
+                            <Input
+                                id="session_date"
+                                type="date"
+                                value={data.session_date}
+                                onChange={(e) => handleDateChange(e.target.value)}
+                                required
+                            />
+                        </div>
+                        <div className="space-y-1.5 sm:col-span-2">
+                            <Label htmlFor="session_title" className="font-semibold">Título / Objetivo de la Clase</Label>
+                            <Input
+                                id="session_title"
+                                placeholder="Ej: Práctica en laboratorio de computación - Grupo 1"
+                                value={data.title}
+                                onChange={(e) => setData('title', e.target.value)}
+                            />
+                        </div>
                     </div>
-                    <div className="space-y-1.5 sm:col-span-2">
-                        <Label htmlFor="session_title">Título / Objetivo de la Clase</Label>
-                        <Input
-                            id="session_title"
-                            placeholder="Ej: Práctica en laboratorio de computación"
-                            value={data.title}
-                            onChange={(e) => setData('title', e.target.value)}
-                        />
+
+                    {/* Schedule & Duration Row */}
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 pt-3 border-t">
+                        {/* Start Time */}
+                        <div className="sm:col-span-4 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                                <Label htmlFor="start_time" className="flex items-center gap-1.5 text-xs font-semibold">
+                                    <Clock className="h-3.5 w-3.5 text-primary" /> Hora de Inicio
+                                </Label>
+                                <button
+                                    type="button"
+                                    onClick={setCurrentTime}
+                                    className="text-[11px] text-primary hover:underline font-medium"
+                                >
+                                    Poner ahora
+                                </button>
+                            </div>
+                            <Input
+                                id="start_time"
+                                type="time"
+                                value={data.start_time}
+                                onChange={(e) => handleStartTimeChange(e.target.value)}
+                                className="font-mono text-sm"
+                            />
+                        </div>
+
+                        {/* Duration Presets & Custom Limit */}
+                        <div className="sm:col-span-4 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                                <Label htmlFor="duration_minutes" className="text-xs font-semibold">
+                                    Límite / Duración
+                                </Label>
+                                {data.duration_minutes && (
+                                    <span className="text-[11px] font-mono text-muted-foreground font-semibold">
+                                        {data.duration_minutes} min
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                {[30, 45, 60, 90].map((mins) => (
+                                    <button
+                                        key={mins}
+                                        type="button"
+                                        onClick={() => handleDurationChange(mins)}
+                                        className={`px-2 py-1 text-xs rounded border transition-colors ${
+                                            Number(data.duration_minutes) === mins
+                                                ? 'bg-primary text-primary-foreground border-primary font-semibold'
+                                                : 'bg-background hover:bg-muted text-muted-foreground border-border'
+                                        }`}
+                                    >
+                                        {mins}m
+                                    </button>
+                                ))}
+                                <div className="relative flex-1 min-w-[65px]">
+                                    <Input
+                                        id="duration_minutes"
+                                        type="number"
+                                        min="1"
+                                        max="720"
+                                        placeholder="Min"
+                                        value={data.duration_minutes}
+                                        onChange={(e) => handleDurationChange(e.target.value ? Number(e.target.value) : '')}
+                                        className="text-xs h-9 font-mono pr-5"
+                                    />
+                                    <span className="absolute right-2 top-2.5 text-[10px] text-muted-foreground pointer-events-none">
+                                        m
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* End Time */}
+                        <div className="sm:col-span-4 space-y-1.5">
+                            <Label htmlFor="end_time" className="flex items-center gap-1.5 text-xs font-semibold">
+                                <Clock className="h-3.5 w-3.5 text-muted-foreground" /> Hora de Fin (Estimada)
+                            </Label>
+                            <Input
+                                id="end_time"
+                                type="time"
+                                value={data.end_time}
+                                onChange={(e) => handleEndTimeChange(e.target.value)}
+                                className="font-mono text-sm"
+                            />
+                        </div>
                     </div>
-                    <div className="space-y-1.5 sm:col-span-3">
-                        <Label htmlFor="session_notes">Notas de la Clase (Opcional)</Label>
+
+                    {/* Notes */}
+                    <div className="space-y-1.5 pt-2 border-t">
+                        <Label htmlFor="session_notes" className="text-xs">Observaciones / Notas pedagógicas</Label>
                         <Input
                             id="session_notes"
-                            placeholder="Observaciones de la clase, incidencias o tareas pendientes..."
+                            placeholder="Notas generales de la sesión..."
                             value={data.notes}
                             onChange={(e) => setData('notes', e.target.value)}
                         />
                     </div>
                 </div>
 
+                {/* Day Sessions Context Banner (other sessions of the day) */}
+                {daySummary.sessions_count > 0 && (
+                    <div className="bg-primary/5 border border-primary/20 rounded-xl p-3.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2">
+                            <Clock className="h-4 w-4 text-primary shrink-0" />
+                            <span>
+                                <strong>Hay {daySummary.sessions_count} otra(s) sesión(es)</strong> en esta fecha ({daySummary.attended_student_ids.length} alumnos en esas otras sesiones).
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            {daySummary.sessions.map((ds) => (
+                                <span
+                                    key={ds.id}
+                                    className="bg-background border rounded px-2 py-0.5 font-mono text-[11px] text-muted-foreground flex items-center gap-1"
+                                    title={`${ds.student_count} alumno(s)`}
+                                >
+                                    <span className="font-medium text-foreground">{ds.title}</span>
+                                    {ds.formatted_time_range && (
+                                        <span className="text-[10px] text-primary">({ds.formatted_time_range})</span>
+                                    )}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                     {/* Left Column: Student Selection & Workstations (7 cols) */}
                     <div className="lg:col-span-7 space-y-4">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <Users className="h-4 w-4 text-primary" />
-                                <h3 className="font-semibold text-sm text-foreground">
-                                    Alumnos en el Laboratorio ({selectedStudentIds.length}/{students.length})
-                                </h3>
+                        <div className="flex flex-col gap-2.5">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Users className="h-4 w-4 text-primary" />
+                                    <h3 className="font-semibold text-sm text-foreground">
+                                        Alumnos en la Sesión ({selectedStudentIds.length}/{students.length})
+                                    </h3>
+                                    {loadingDaySummary && (
+                                        <span className="text-[10px] text-muted-foreground animate-pulse">
+                                            Actualizando...
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={selectAllVisibleStudents}
+                                        className="text-xs h-7 px-2"
+                                        title="Seleccionar todos los estudiantes visibles"
+                                    >
+                                        Seleccionar visibles
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={clearStudents}
+                                        className="text-xs h-7 px-2 text-muted-foreground"
+                                    >
+                                        Limpiar
+                                    </Button>
+                                </div>
                             </div>
-                            <div className="flex gap-2">
-                                <Button size="sm" variant="ghost" onClick={selectAllStudents} className="text-xs h-7">
-                                    Todos
-                                </Button>
-                                <Button size="sm" variant="ghost" onClick={clearStudents} className="text-xs h-7 text-muted-foreground">
-                                    Limpiar
-                                </Button>
+
+                            {/* Filter Bar: Todos / Sin otra sesión hoy / En otra sesión */}
+                            <div className="flex items-center justify-between gap-2 border rounded-lg p-1 bg-muted/40">
+                                <div className="flex items-center gap-1 flex-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setStudentFilter('all')}
+                                        className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors ${
+                                            studentFilter === 'all'
+                                                ? 'bg-background text-foreground shadow-xs font-semibold'
+                                                : 'text-muted-foreground hover:text-foreground'
+                                        }`}
+                                    >
+                                        Todos ({students.length})
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setStudentFilter('pending')}
+                                        className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+                                            studentFilter === 'pending'
+                                                ? 'bg-emerald-600 text-white shadow-xs font-semibold'
+                                                : 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10'
+                                        }`}
+                                        title="Estudiantes que no están en otra sesión de este día"
+                                    >
+                                        <span className={`h-1.5 w-1.5 rounded-full ${studentFilter === 'pending' ? 'bg-white' : 'bg-emerald-500'}`} />
+                                        Sin otra sesión hoy ({pendingCount})
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setStudentFilter('attended')}
+                                        className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors ${
+                                            studentFilter === 'attended'
+                                                ? 'bg-background text-foreground shadow-xs font-semibold'
+                                                : 'text-muted-foreground hover:text-foreground'
+                                        }`}
+                                        title="Estudiantes que ya asistieron a otra sesión en este día"
+                                    >
+                                        En otra sesión ({otherAttendedCount})
+                                    </button>
+                                </div>
+
+                                {pendingCount > 0 && (
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="secondary"
+                                        onClick={selectOnlyPendingStudents}
+                                        className="text-[11px] h-6 px-2 text-emerald-700 dark:text-emerald-300 font-semibold shrink-0"
+                                    >
+                                        + Seleccionar disponibles ({pendingCount})
+                                    </Button>
+                                )}
                             </div>
                         </div>
 
                         {students.length === 0 ? (
                             <div className="rounded-xl border border-dashed p-6 text-center text-muted-foreground text-xs">
-                                No hay estudiantes matriculados en este curso.
+                                No hay estudiantes disponibles.
+                            </div>
+                        ) : filteredStudents.length === 0 ? (
+                            <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground text-xs bg-card">
+                                <Users className="mx-auto h-7 w-7 text-muted-foreground/40 mb-2" />
+                                <p className="font-semibold text-foreground">
+                                    Ningún estudiante coincide con este filtro.
+                                </p>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="link"
+                                    onClick={() => setStudentFilter('all')}
+                                    className="text-xs text-primary mt-1"
+                                >
+                                    Ver todos los estudiantes
+                                </Button>
                             </div>
                         ) : (
                             <div className="divide-y rounded-xl border bg-card max-h-[460px] overflow-y-auto">
-                                {students.map((student) => {
+                                {filteredStudents.map((student) => {
                                     const isSelected = selectedStudentIds.includes(student.id);
+                                    const otherSessions = daySummary.student_attendance_map[student.id] || [];
+                                    const inOtherSession = otherSessions.length > 0;
 
                                     return (
                                         <div
                                             key={student.id}
                                             className={`flex items-center justify-between p-3 transition-colors ${
-                                                isSelected ? 'bg-primary/5' : 'hover:bg-muted/30'
+                                                isSelected
+                                                    ? 'bg-primary/5'
+                                                    : inOtherSession
+                                                    ? 'bg-muted/15 hover:bg-muted/30'
+                                                    : 'hover:bg-muted/30'
                                             }`}
                                         >
                                             <label className="flex items-center gap-3 cursor-pointer flex-1">
@@ -354,12 +734,33 @@ export default function SessionEdit({ course, session, students, courseTopics }:
                                                     onChange={() => toggleStudent(student.id)}
                                                     className="h-4 w-4 rounded text-primary border-muted-foreground"
                                                 />
-                                                <div>
-                                                    <span className="text-xs font-semibold text-foreground block">
-                                                        {student.last_name}, {student.first_name}
-                                                    </span>
+                                                <div className="space-y-0.5">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="text-xs font-semibold text-foreground">
+                                                            {student.last_name}, {student.first_name}
+                                                        </span>
+
+                                                        {/* Status Badge */}
+                                                        {inOtherSession ? (
+                                                            <span
+                                                                className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30"
+                                                                title={`También está en: ${otherSessions
+                                                                    .map((s) => `${s.title} (${s.formatted_time_range || 'sin hora'})`)
+                                                                    .join(', ')}`}
+                                                            >
+                                                                <Clock className="h-3 w-3 text-amber-600" />
+                                                                En otra sesión {otherSessions[0]?.start_time ? `(${otherSessions[0].start_time})` : ''}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+                                                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                                                Disponible
+                                                            </span>
+                                                        )}
+                                                    </div>
+
                                                     {student.student_id_number && (
-                                                        <span className="text-[10px] text-muted-foreground font-mono">
+                                                        <span className="text-[10px] text-muted-foreground font-mono block">
                                                             {student.student_id_number}
                                                         </span>
                                                     )}
@@ -380,7 +781,7 @@ export default function SessionEdit({ course, session, students, courseTopics }:
                                                                     [student.id]: e.target.value,
                                                                 })
                                                             }
-                                                            className="h-7 w-20 text-xs px-2 rounded border bg-background text-foreground font-mono"
+                                                            className="w-20 px-2 py-1 text-[11px] font-mono border rounded bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                                                         />
                                                     </div>
                                                     <button
@@ -418,76 +819,90 @@ export default function SessionEdit({ course, session, students, courseTopics }:
                         )}
                     </div>
 
-                    {/* Right Column: Topics & Suggestions (5 cols) */}
-                    <div className="lg:col-span-5 space-y-4">
-                        {/* Recommendation Card */}
-                        {loadingSuggestion && (
-                            <div className="p-4 rounded-xl border bg-card animate-pulse flex items-center gap-3">
-                                <Sparkles className="h-5 w-5 text-primary shrink-0 animate-spin" />
-                                <span className="text-xs text-muted-foreground">Analizando temario recomendado...</span>
-                            </div>
-                        )}
-
-                        {!loadingSuggestion && suggestion && suggestion.primary_recommendation && (
-                            <div className="p-4 rounded-xl border border-primary/30 bg-primary/5 space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <Sparkles className="h-4 w-4 text-primary" />
-                                        <span className="text-xs font-bold text-primary uppercase tracking-wider">
-                                            Sugerencia Inteligente
-                                        </span>
-                                    </div>
-                                    <Button
-                                        size="sm"
-                                        variant="default"
-                                        className="h-7 text-xs gap-1.5 bg-primary text-primary-foreground"
-                                        onClick={applySuggestedTopic}
-                                    >
-                                        <CheckCircle2 className="h-3.5 w-3.5" /> Aplicar Tema
-                                    </Button>
-                                </div>
-
-                                <div>
-                                    <h4 className="text-sm font-semibold text-foreground">
-                                        {suggestion.primary_recommendation.title}
-                                    </h4>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        {suggestion.primary_recommendation.rationale}
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Topics Selection Checklist */}
-                        <div className="space-y-2">
+                    {/* Right Column: Live Suggestion & Topic Selection (5 cols) */}
+                    <div className="lg:col-span-5 space-y-5">
+                        {/* Live Topic Suggestion Box */}
+                        <div className="rounded-xl border bg-card p-4 shadow-xs space-y-3">
                             <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <BookOpen className="h-4 w-4 text-primary" />
-                                    <h3 className="font-semibold text-sm text-foreground">
-                                        Temas Impartidos ({selectedTopicIds.length})
-                                    </h3>
+                                <span className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                                    <Sparkles className="h-4 w-4" /> Sugerencia Determinista
+                                </span>
+                                {loadingSuggestion && (
+                                    <span className="text-[10px] text-muted-foreground animate-pulse">
+                                        Analizando grupo...
+                                    </span>
+                                )}
+                            </div>
+
+                            {selectedStudentIds.length === 0 ? (
+                                <p className="text-xs text-muted-foreground">
+                                    Selecciona los estudiantes presentes en el aula o laboratorio para obtener la recomendación pedagógica en tiempo real.
+                                </p>
+                            ) : suggestion?.primary_recommendation ? (
+                                <div className="space-y-2.5">
+                                    <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <h4 className="text-xs font-bold text-foreground">
+                                                {suggestion.primary_recommendation.title}
+                                            </h4>
+                                            <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-primary text-primary-foreground">
+                                                {suggestion.primary_recommendation.action_type === 'advance'
+                                                    ? 'Avanzar'
+                                                    : suggestion.primary_recommendation.action_type === 'review_leveling'
+                                                    ? 'Nivelación'
+                                                    : 'Inicio'}
+                                            </span>
+                                        </div>
+                                        <p className="text-[11px] text-muted-foreground mt-1.5">
+                                            {suggestion.primary_recommendation.rationale}
+                                        </p>
+                                    </div>
+
+                                    {suggestion.primary_recommendation.course_topic_id && (
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="secondary"
+                                            className="w-full text-xs gap-1.5"
+                                            onClick={applySuggestedTopic}
+                                        >
+                                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                                            Seleccionar este tema para la sesión
+                                        </Button>
+                                    )}
                                 </div>
+                            ) : (
+                                <p className="text-xs text-muted-foreground">
+                                    No hay sugerencias disponibles para la selección actual.
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Topics Selection */}
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                                <BookOpen className="h-4 w-4 text-primary" />
+                                <h3 className="font-semibold text-sm text-foreground">
+                                    Temas a Explicar ({selectedTopicIds.length})
+                                </h3>
                             </div>
 
                             {courseTopics.length === 0 ? (
                                 <div className="rounded-xl border border-dashed p-6 text-center text-muted-foreground text-xs">
-                                    No hay temas en el pensum de este curso.
+                                    El pensum no tiene temas configurados.
                                 </div>
                             ) : (
-                                <div className="divide-y rounded-xl border bg-card max-h-[350px] overflow-y-auto">
+                                <div className="divide-y rounded-xl border bg-card max-h-[340px] overflow-y-auto">
                                     {courseTopics.map((topic, index) => {
-                                        const isParentSelected = selectedTopicIds.includes(topic.id);
                                         const hasSubtopics = topic.subtopics && topic.subtopics.length > 0;
-                                        const subtopics = topic.subtopics || [];
-                                        const allSubSelected =
-                                            hasSubtopics && subtopics.every((s) => selectedTopicIds.includes(s.id));
-                                        const someSubSelected =
-                                            hasSubtopics && subtopics.some((s) => selectedTopicIds.includes(s.id));
-
-                                        const isChecked = hasSubtopics ? allSubSelected : isParentSelected;
+                                        const isTopicSelected = selectedTopicIds.includes(topic.id);
+                                        const subIds = hasSubtopics ? topic.subtopics!.map((s) => s.id) : [];
+                                        const allSubSelected = hasSubtopics && subIds.every((id) => selectedTopicIds.includes(id));
+                                        const someSubSelected = hasSubtopics && subIds.some((id) => selectedTopicIds.includes(id));
+                                        const isChecked = hasSubtopics ? allSubSelected : isTopicSelected;
 
                                         return (
-                                            <div key={topic.id} className="p-3 hover:bg-muted/20 transition-colors">
+                                            <div key={topic.id} className="p-3">
                                                 <div className="flex items-start gap-3">
                                                     <input
                                                         type="checkbox"
@@ -562,7 +977,7 @@ export default function SessionEdit({ course, session, students, courseTopics }:
                                 disabled={selectedStudentIds.length === 0 || selectedTopicIds.length === 0 || processing}
                                 onClick={() => handleSaveSession('completed')}
                             >
-                                <Play className="h-4 w-4 fill-white" /> Guardar como Completada
+                                <Play className="h-4 w-4 fill-white" /> Actualizar como Completada
                             </Button>
 
                             <Button
@@ -578,11 +993,11 @@ export default function SessionEdit({ course, session, students, courseTopics }:
                             <Button
                                 type="button"
                                 variant="ghost"
-                                className="w-full gap-2 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                                className="w-full gap-2 text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/30"
                                 disabled={processing}
                                 onClick={() => handleSaveSession('cancelled')}
                             >
-                                <Ban className="h-3.5 w-3.5" /> Marcar como Cancelada
+                                <Ban className="h-3.5 w-3.5" /> Marcar Sesión como Cancelada
                             </Button>
                         </div>
                     </div>

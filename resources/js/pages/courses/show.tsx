@@ -26,6 +26,7 @@ import {
     AlertCircle,
     RefreshCw,
     CalendarDays,
+    Clock,
     Award,
     Lock,
     Copy,
@@ -77,6 +78,10 @@ interface Student {
 interface SessionItem {
     id: number;
     session_date: string;
+    start_time?: string | null;
+    end_time?: string | null;
+    duration_minutes?: number | null;
+    formatted_time_range?: string | null;
     title?: string;
     notes?: string;
     status: 'draft' | 'completed' | 'cancelled';
@@ -1518,6 +1523,15 @@ export default function CourseShow({
                                                         <CalendarDays className="h-3.5 w-3.5 text-primary" />
                                                         {formatNaturalDateWithDay(session.session_date)}
                                                     </span>
+                                                    {session.formatted_time_range && (
+                                                        <>
+                                                            <span className="text-xs text-muted-foreground">•</span>
+                                                            <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">
+                                                                <Clock className="h-3 w-3" />
+                                                                {session.formatted_time_range}
+                                                            </span>
+                                                        </>
+                                                    )}
                                                     {session.created_by && (
                                                         <>
                                                             <span className="text-xs text-muted-foreground">•</span>

@@ -18,16 +18,39 @@ class ClassSession extends Model
         'session_date',
         'start_time',
         'end_time',
+        'duration_minutes',
         'title',
         'notes',
         'status',
+    ];
+
+    protected $appends = [
+        'formatted_time_range',
     ];
 
     protected function casts(): array
     {
         return [
             'session_date' => 'date',
+            'duration_minutes' => 'integer',
         ];
+    }
+
+    public function getFormattedTimeRangeAttribute(): ?string
+    {
+        $start = $this->start_time ? substr($this->start_time, 0, 5) : null;
+        $end = $this->end_time ? substr($this->end_time, 0, 5) : null;
+        $duration = $this->duration_minutes ? "{$this->duration_minutes} min" : null;
+
+        if ($start && $end) {
+            return $duration ? "{$start} - {$end} ({$duration})" : "{$start} - {$end}";
+        }
+
+        if ($start) {
+            return $duration ? "{$start} ({$duration})" : $start;
+        }
+
+        return $duration;
     }
 
     public function course(): BelongsTo

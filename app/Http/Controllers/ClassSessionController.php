@@ -11,6 +11,7 @@ use App\Services\TopicSuggestionEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -121,11 +122,33 @@ class ClassSessionController extends Controller
             },
         ]);
 
+        $initialDate = $request->query('date', now()->toDateString());
+        $daySummary = $this->getDaySessionSummary($course, $initialDate);
+
         return Inertia::render('sessions/create', [
             'course' => $course,
             'students' => $course->students,
             'courseTopics' => $course->courseTopics,
+            'daySummary' => $daySummary,
+            'initialDate' => $initialDate,
         ]);
+    }
+
+    /**
+     * Get summary of sessions and student attendances for a specific date in a course.
+     */
+    public function dateSummary(Request $request, Course $course): JsonResponse
+    {
+        if (!$request->user()->canManageCourse($course)) {
+            abort(403, 'No tienes permiso para gestionar este curso.');
+        }
+
+        $date = $request->input('date', now()->toDateString());
+        $excludeSessionId = $request->input('exclude_session_id');
+
+        $summary = $this->getDaySessionSummary($course, $date, $excludeSessionId ? (int) $excludeSessionId : null);
+
+        return response()->json($summary);
     }
 
     /**
@@ -163,6 +186,9 @@ class ClassSessionController extends Controller
         }
         $validated = $request->validate([
             'session_date' => ['required', 'date'],
+            'start_time' => ['nullable', 'string', 'regex:/^\d{1,2}:\d{2}(:\d{2})?$/'],
+            'end_time' => ['nullable', 'string', 'regex:/^\d{1,2}:\d{2}(:\d{2})?$/'],
+            'duration_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'],
             'title' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
             'status' => ['required', 'in:draft,completed,cancelled'],
@@ -180,12 +206,29 @@ class ClassSessionController extends Controller
             'progress_overrides.*.mastery_level' => ['nullable', 'in:not_evaluated,needs_reinforcement,mastered'],
         ]);
 
-        DB::transaction(function () use ($validated, $course, $request) {
+        $startTime = !empty($validated['start_time']) ? substr($validated['start_time'], 0, 5) : null;
+        $endTime = !empty($validated['end_time']) ? substr($validated['end_time'], 0, 5) : null;
+        $durationMinutes = !empty($validated['duration_minutes']) ? (int) $validated['duration_minutes'] : null;
+
+        if ($startTime && $durationMinutes && !$endTime) {
+            $endTime = Carbon::createFromFormat('H:i', $startTime)->addMinutes($durationMinutes)->format('H:i');
+        } elseif ($startTime && $endTime && !$durationMinutes) {
+            $start = Carbon::createFromFormat('H:i', $startTime);
+            $end = Carbon::createFromFormat('H:i', $endTime);
+            if ($end->greaterThan($start)) {
+                $durationMinutes = $start->diffInMinutes($end);
+            }
+        }
+
+        DB::transaction(function () use ($validated, $course, $request, $startTime, $endTime, $durationMinutes) {
             // 1. Create Class Session
             $session = ClassSession::create([
                 'course_id' => $course->id,
                 'created_by_user_id' => $request->user()->id,
                 'session_date' => $validated['session_date'],
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+                'duration_minutes' => $durationMinutes,
                 'title' => $validated['title'] ?? null,
                 'notes' => $validated['notes'] ?? null,
                 'status' => $validated['status'],
@@ -281,11 +324,15 @@ class ClassSessionController extends Controller
             'progressRecords:id,class_session_id,student_id,course_topic_id,coverage_status,mastery_level',
         ]);
 
+        $sessionDate = $session->session_date ? $session->session_date->toDateString() : now()->toDateString();
+        $daySummary = $this->getDaySessionSummary($course, $sessionDate, $session->id);
+
         return Inertia::render('sessions/edit', [
             'course' => $course,
             'session' => $session,
             'students' => $course->students,
             'courseTopics' => $course->courseTopics,
+            'daySummary' => $daySummary,
         ]);
     }
 
@@ -308,6 +355,9 @@ class ClassSessionController extends Controller
 
         $validated = $request->validate([
             'session_date' => ['required', 'date'],
+            'start_time' => ['nullable', 'string', 'regex:/^\d{1,2}:\d{2}(:\d{2})?$/'],
+            'end_time' => ['nullable', 'string', 'regex:/^\d{1,2}:\d{2}(:\d{2})?$/'],
+            'duration_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'],
             'title' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
             'status' => ['required', 'in:draft,completed,cancelled'],
@@ -324,10 +374,27 @@ class ClassSessionController extends Controller
             'progress_overrides.*.mastery_level' => ['nullable', 'in:not_evaluated,needs_reinforcement,mastered'],
         ]);
 
-        DB::transaction(function () use ($validated, $session) {
+        $startTime = !empty($validated['start_time']) ? substr($validated['start_time'], 0, 5) : null;
+        $endTime = !empty($validated['end_time']) ? substr($validated['end_time'], 0, 5) : null;
+        $durationMinutes = !empty($validated['duration_minutes']) ? (int) $validated['duration_minutes'] : null;
+
+        if ($startTime && $durationMinutes && !$endTime) {
+            $endTime = Carbon::createFromFormat('H:i', $startTime)->addMinutes($durationMinutes)->format('H:i');
+        } elseif ($startTime && $endTime && !$durationMinutes) {
+            $start = Carbon::createFromFormat('H:i', $startTime);
+            $end = Carbon::createFromFormat('H:i', $endTime);
+            if ($end->greaterThan($start)) {
+                $durationMinutes = $start->diffInMinutes($end);
+            }
+        }
+
+        DB::transaction(function () use ($validated, $session, $startTime, $endTime, $durationMinutes) {
             // 1. Update session details
             $session->update([
                 'session_date' => $validated['session_date'],
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+                'duration_minutes' => $durationMinutes,
                 'title' => $validated['title'] ?? null,
                 'notes' => $validated['notes'] ?? null,
                 'status' => $validated['status'],
@@ -485,5 +552,56 @@ class ClassSessionController extends Controller
     public function destroyDirect(Request $request, ClassSession $session): RedirectResponse
     {
         return $this->destroy($request, $session->course, $session);
+    }
+
+    /**
+     * Get summary of sessions and student attendances for a specific date in a course.
+     */
+    protected function getDaySessionSummary(Course $course, string $date, ?int $excludeSessionId = null): array
+    {
+        $query = ClassSession::where('course_id', $course->id)
+            ->whereDate('session_date', $date)
+            ->where('status', '!=', 'cancelled')
+            ->with(['attendances.student:id,first_name,last_name,student_id_number']);
+
+        if ($excludeSessionId) {
+            $query->where('id', '!=', $excludeSessionId);
+        }
+
+        $sessions = $query->orderBy('start_time')->orderBy('id')->get();
+
+        $studentAttendanceMap = [];
+        foreach ($sessions as $session) {
+            $sessionInfo = [
+                'session_id' => $session->id,
+                'title' => $session->title ?: ('Sesión #' . $session->id),
+                'start_time' => $session->start_time ? substr($session->start_time, 0, 5) : null,
+                'end_time' => $session->end_time ? substr($session->end_time, 0, 5) : null,
+                'duration_minutes' => $session->duration_minutes,
+                'formatted_time_range' => $session->formatted_time_range,
+                'status' => $session->status,
+            ];
+
+            foreach ($session->attendances as $att) {
+                $studentAttendanceMap[$att->student_id][] = $sessionInfo;
+            }
+        }
+
+        return [
+            'date' => $date,
+            'sessions_count' => $sessions->count(),
+            'attended_student_ids' => array_values(array_unique(array_keys($studentAttendanceMap))),
+            'student_attendance_map' => $studentAttendanceMap,
+            'sessions' => $sessions->map(fn($s) => [
+                'id' => $s->id,
+                'title' => $s->title ?: ('Sesión #' . $s->id),
+                'start_time' => $s->start_time ? substr($s->start_time, 0, 5) : null,
+                'end_time' => $s->end_time ? substr($s->end_time, 0, 5) : null,
+                'duration_minutes' => $s->duration_minutes,
+                'formatted_time_range' => $s->formatted_time_range,
+                'status' => $s->status,
+                'student_count' => $s->attendances->count(),
+            ])->values()->all(),
+        ];
     }
 }

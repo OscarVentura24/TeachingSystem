@@ -79,6 +79,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('/sessions/{session}/status', [ClassSessionController::class, 'updateStatusDirect'])->name('sessions.update-status');
     Route::delete('/sessions/{session}', [ClassSessionController::class, 'destroyDirect'])->name('sessions.destroy');
     Route::get('/courses/{course}/sessions/create', [ClassSessionController::class, 'create'])->name('courses.sessions.create');
+    Route::get('/courses/{course}/sessions/date-summary', [ClassSessionController::class, 'dateSummary'])->name('courses.sessions.date-summary');
     Route::post('/courses/{course}/sessions/suggest', [ClassSessionController::class, 'suggestTopic'])->name('courses.sessions.suggest');
     Route::post('/courses/{course}/sessions', [ClassSessionController::class, 'store'])->name('courses.sessions.store');
     Route::get('/courses/{course}/sessions/{session}/edit', [ClassSessionController::class, 'edit'])->name('courses.sessions.edit');
