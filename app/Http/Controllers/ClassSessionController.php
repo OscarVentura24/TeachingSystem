@@ -264,7 +264,7 @@ class ClassSessionController extends Controller
         $course->load([
             'students' => function ($query) use ($session) {
                 $query->where(function ($sub) use ($session) {
-                    $sub->wherePivotIn('status', ['active', 'repeated'])
+                    $sub->whereIn('enrollments.status', ['active', 'repeated'])
                         ->orWhereIn('students.id', $session->attendances()->pluck('student_id'));
                 })->orderBy('last_name')->orderBy('first_name');
             },

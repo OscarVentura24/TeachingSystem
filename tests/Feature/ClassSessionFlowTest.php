@@ -308,3 +308,28 @@ test('user can specify needs_reinforcement override when creating and updating s
     expect($p2Updated->mastery_level)->toBe('needs_reinforcement');
 });
 
+test('teacher can view the edit class session screen', function () {
+    $session = ClassSession::create([
+        'course_id' => $this->course->id,
+        'created_by_user_id' => $this->user->id,
+        'session_date' => '2026-10-12',
+        'title' => 'Introducción',
+        'status' => 'completed',
+    ]);
+    $session->attendances()->create([
+        'student_id' => $this->student1->id,
+        'workstation' => 'PC-01',
+    ]);
+
+    $response = $this->actingAs($this->user)
+        ->get("/courses/{$this->course->id}/sessions/{$session->id}/edit");
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->component('sessions/edit')
+        ->has('course')
+        ->has('session')
+        ->has('students')
+    );
+});
+
