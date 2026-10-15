@@ -48,7 +48,11 @@ class PensumDuplicationService
                 $matchReason = 'Mismo código de asignatura (' . $source->code . ')';
             } elseif ($targetName === $sourceName) {
                 $score += 80;
-                $matchReason = 'Mismo nombre de materia (' . $source->name . ')';
+                if ($source->academic_period_id !== $targetCourse->academic_period_id && $source->academicPeriod) {
+                    $matchReason = 'Mismo curso del período anterior (' . $source->academicPeriod->name . ')';
+                } else {
+                    $matchReason = 'Mismo nombre de materia (' . $source->name . ')';
+                }
             } elseif (str_contains($sourceName, $targetName) || str_contains($targetName, $sourceName)) {
                 $score += 50;
                 $matchReason = 'Nombre de materia muy similar';
@@ -100,6 +104,51 @@ class PensumDuplicationService
                 return $b['score'] <=> $a['score'];
             }
             return $b['id'] <=> $a['id'];
+        })->values();
+    }
+
+    /**
+     * Get candidate destination courses to which the source course can duplicate its pensum.
+     * Only non-read-only courses in the same institution are candidates.
+     */
+    public function getCandidateTargetCourses(Course $sourceCourse, ?User $user = null): Collection
+    {
+        $courses = Course::where('institution_id', $sourceCourse->institution_id)
+            ->where('id', '!=', $sourceCourse->id)
+            ->with([
+                'academicPeriod:id,name,is_current,is_closed',
+                'courseTopics' => function ($q) {
+                    $q->select('id', 'course_id', 'title', 'parent_id');
+                },
+            ])
+            ->withCount(['courseTopics'])
+            ->get();
+
+        // Target must not be read-only
+        $courses = $courses->filter(fn ($c) => !$c->isReadOnly());
+
+        return $courses->map(function ($target) use ($sourceCourse) {
+            $isSamePeriod = $target->academic_period_id === $sourceCourse->academic_period_id;
+
+            return [
+                'id' => $target->id,
+                'name' => $target->name,
+                'code' => $target->code,
+                'section' => $target->section,
+                'academic_period' => $target->academicPeriod ? [
+                    'id' => $target->academicPeriod->id,
+                    'name' => $target->academicPeriod->name,
+                    'is_current' => (bool) $target->academicPeriod->is_current,
+                ] : null,
+                'topics_count' => (int) $target->course_topics_count,
+                'is_same_period' => $isSamePeriod,
+                'existing_titles' => $target->courseTopics->pluck('title')->map(fn ($t) => mb_strtolower(trim($t)))->values()->toArray(),
+            ];
+        })->sort(function ($a, $b) {
+            if ($a['is_same_period'] !== $b['is_same_period']) {
+                return $b['is_same_period'] <=> $a['is_same_period'];
+            }
+            return strcmp($a['name'], $b['name']);
         })->values();
     }
 

@@ -249,48 +249,73 @@ class CourseController extends Controller
         ]);
 
         $candidateSourceCourses = $this->pensumDuplicationService->getCandidateSourceCourses($course, $request->user());
+        $candidateTargetCourses = $this->pensumDuplicationService->getCandidateTargetCourses($course, $request->user());
+        $defaultDirection = $course->courseTopics->count() > 0 ? 'export' : 'import';
 
         return Inertia::render('courses/clone-pensum', [
             'course' => $course,
             'candidateSourceCourses' => $candidateSourceCourses,
+            'candidateTargetCourses' => $candidateTargetCourses,
+            'defaultDirection' => $defaultDirection,
         ]);
     }
 
     /**
-     * Duplicate or merge pensum topics from another course intelligently.
+     * Duplicate or merge pensum topics between courses intelligently (both export and import).
      */
     public function clonePensum(Request $request, Course $course): RedirectResponse
     {
-        $this->ensureCourseNotReadOnly($course);
-
-        if (!$request->user()->canManageCourse($course)) {
-            abort(403, 'No tienes permiso para modificar el pensum de este curso.');
-        }
-
         $validated = $request->validate([
-            'source_course_id' => ['required', 'integer', 'exists:courses,id'],
+            'direction' => ['nullable', 'string', 'in:export,import'],
+            'source_course_id' => ['nullable', 'integer', 'exists:courses,id'],
+            'target_course_id' => ['nullable', 'integer', 'exists:courses,id'],
             'mode' => ['required', 'string', 'in:replace,merge,selected'],
             'selected_topic_ids' => ['nullable', 'array'],
             'selected_topic_ids.*' => ['integer', 'exists:course_topics,id'],
         ]);
 
-        $sourceCourse = Course::findOrFail($validated['source_course_id']);
+        $direction = $validated['direction'] ?? ($request->has('target_course_id') ? 'export' : 'import');
+
+        if ($direction === 'export') {
+            $sourceCourse = $course;
+            $targetCourseId = $validated['target_course_id'] ?? null;
+            if (!$targetCourseId) {
+                return back()->withErrors(['target_course_id' => 'Debes seleccionar un curso destino.']);
+            }
+            $targetCourse = Course::findOrFail($targetCourseId);
+            $this->ensureCourseNotReadOnly($targetCourse);
+            if (!$request->user()->canManageCourse($targetCourse)) {
+                abort(403, 'No tienes permiso para modificar el pensum del curso destino.');
+            }
+        } else {
+            $this->ensureCourseNotReadOnly($course);
+            if (!$request->user()->canManageCourse($course)) {
+                abort(403, 'No tienes permiso para modificar el pensum de este curso.');
+            }
+            $sourceCourseId = $validated['source_course_id'] ?? null;
+            if (!$sourceCourseId) {
+                return back()->withErrors(['source_course_id' => 'Debes seleccionar un curso de referencia.']);
+            }
+            $sourceCourse = Course::findOrFail($sourceCourseId);
+            $targetCourse = $course;
+        }
 
         $result = $this->pensumDuplicationService->duplicatePensum(
             $sourceCourse,
-            $course,
+            $targetCourse,
             [
                 'mode' => $validated['mode'],
                 'selected_topic_ids' => $validated['selected_topic_ids'] ?? [],
             ]
         );
 
-        $msg = "Se importaron exitosamente {$result['total_imported']} temas y subtemas desde el pensum de '{$sourceCourse->name}'.";
+        $msg = "Se duplicaron exitosamente {$result['total_imported']} temas y subtemas desde '{$sourceCourse->name}' hacia '{$targetCourse->name}'.";
         if ($result['skipped_duplicates'] > 0) {
             $msg .= " ({$result['skipped_duplicates']} temas omitidos por estar ya presentes).";
         }
 
-        return redirect()->route('courses.show', ['course' => $course->id, 'tab' => 'pensum'])->with('success', $msg);
+        $redirectToId = $direction === 'export' ? $targetCourse->id : $course->id;
+        return redirect()->route('courses.show', ['course' => $redirectToId, 'tab' => 'pensum'])->with('success', $msg);
     }
 
     /**

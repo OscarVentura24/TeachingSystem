@@ -222,7 +222,7 @@ test('cannot duplicate pensum into a read-only closed course', function () {
     $response->assertForbidden();
 });
 
-test('teacher can access the dedicated clone pensum page', function () {
+test('teacher can access the dedicated clone pensum page with source and target candidates', function () {
     $response = $this->actingAs($this->teacher)
         ->get(route('courses.pensum.clone-view', $this->targetCourse));
 
@@ -231,7 +231,40 @@ test('teacher can access the dedicated clone pensum page', function () {
         ->component('courses/clone-pensum')
         ->has('course')
         ->has('candidateSourceCourses')
+        ->has('candidateTargetCourses')
+        ->where('defaultDirection', 'import')
     );
+});
+
+test('teacher can duplicate pensum in export direction to a target course', function () {
+    $activeSource = Course::create([
+        'institution_id' => $this->institution->id,
+        'academic_period_id' => $this->period2026->id,
+        'name' => 'Programación I',
+        'section' => 'Sección A',
+        'status' => 'active',
+    ]);
+    $activeSource->teachers()->attach($this->teacher->id);
+    CourseTopic::create([
+        'course_id' => $activeSource->id,
+        'title' => 'Algoritmos y Lógica',
+        'unit_title' => 'Unidad 1',
+        'sort_order' => 1,
+    ]);
+
+    $response = $this->actingAs($this->teacher)
+        ->post(route('courses.pensum.clone', $activeSource), [
+            'direction' => 'export',
+            'target_course_id' => $this->targetCourse->id,
+            'mode' => 'merge',
+        ]);
+
+    $response->assertRedirect();
+    $response->assertSessionHas('success');
+
+    $this->targetCourse->refresh();
+    expect($this->targetCourse->courseTopics()->count())->toBe(1);
+    expect($this->targetCourse->courseTopics()->first()->title)->toBe('Algoritmos y Lógica');
 });
 
 test('cannot access clone pensum page for a read-only closed course', function () {
